@@ -1,0 +1,82 @@
+# ---- Python ----
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipython/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+
+# ---- OS / editor cruft ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+~$*
+
+# ---- Master files (large reference workbooks: CiteScore, SJR, WoS, etc.) ----
+Master File/
+master file/
+MasterFile/
+**/Master File/
+
+# ---- Source & generated data workbooks ----
+Scopus_raw.xlsx
+scopus_raw.xlsx
+analysed.xlsx
+Analysed.xlsx
+**/Scopus_raw.xlsx
+**/scopus_raw.xlsx
+**/analysed.xlsx
+**/Analysed.xlsx
+
+# ---- Databases ----
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/*.db*
+**/data/*.db*
+
+# ---- Pipeline output ----
+output/
+**/output/
+uploads/
+**/uploads/
+*.log
+
+# ---- Docs, Data & Phases ----
+docs/
+**/docs/
+data/
+**/data/
+phase 1/
+**/phase 1/
+phase 2/
+**/phase 2/
+phase 3/
+**/phase 3/
+
+# ---- Database exports (contain faculty roster + all rows; share out-of-band) ----
+db_export/
+*.sql.gz
+*.sql.bz2
+*.dump

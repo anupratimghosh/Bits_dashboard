@@ -1,0 +1,484 @@
+x================================================================================
+BITS RESEARCH PUBLICATION ANALYTICS - HOW TO RUN
+================================================================================
+
+This project exists in four runnable copies. Each one is independent: its own
+code, its own data, its own database. Nothing you do in one affects another.
+
+    TA_Project/            the main project        (MySQL + FastAPI + React)
+    TA_Project/phase 1/    the pipeline            (SQLite, no server)
+    TA_Project/phase 2/    the dashboard           (SQLite + FastAPI + plain JS)
+    TA_Project/phase 3/    the production system   (MySQL + FastAPI + React)
+
+Every folder has its own README.md with the full detail. This file is only about
+starting them up.
+
+
+--------------------------------------------------------------------------------
+0. THE SHORT VERSION
+--------------------------------------------------------------------------------
+
+Open Terminal, then:
+
+    cd ~/Desktop/TA_Project
+
+    cd "phase 1" && ./run.sh          # 25s, then open output/dashboard.html
+    cd "phase 2" && ./run.sh          # then http://localhost:8000
+    cd "phase 3" && ./run.sh          # then http://localhost:8000
+    ./run.sh                          # main project, http://localhost:8000
+
+The quotes around "phase 1" matter - the folder names contain a space.
+
+Press Ctrl+C in the Terminal to stop a running server.
+
+IMPORTANT: phase 2, phase 3 and the main project all use port 8000, so only one
+of them can run at a time. See section 6.
+
+
+--------------------------------------------------------------------------------
+1. WHAT IS ALREADY SET UP ON THIS MACHINE
+--------------------------------------------------------------------------------
+
+Everything. All four copies have been installed, loaded and test-run, so you can
+start any of them immediately without a setup step.
+
+    phase 1      Python packages installed, data loaded, dashboard built
+    phase 2      Python packages installed, data loaded
+    phase 3      Python packages installed, frontend built,
+                 MySQL database bits_research_p3 created and loaded (140 papers)
+    main         Python packages installed, frontend built,
+                 MySQL database bits_research   created and loaded (140 papers)
+
+The setup instructions in sections 2 to 5 are for a DIFFERENT machine, or for
+starting over from scratch.
+
+One thing that must be running for phase 3 and the main project: MySQL.
+
+    brew services start mysql       start it
+    mysqladmin -u root -p ping      check it - should say "mysqld is alive"
+
+Phase 1 and phase 2 do not need MySQL at all.
+
+
+--------------------------------------------------------------------------------
+2. PREREQUISITES (only for a fresh machine)
+--------------------------------------------------------------------------------
+
+                    Needed by                     Check with
+    Python 3.11+    all four                      python3 --version
+    Node.js 20+     phase 3, main                 node --version
+    MySQL 8.0+      phase 3, main                 mysql --version
+
+On macOS:
+
+    brew install python node mysql
+    brew services start mysql
+
+This machine has Python 3.14.3, Node v22.20.0, MySQL 9.4.0 - all fine.
+
+Phase 1 and phase 2 create their own .venv and install their Python packages the
+first time you run them. That takes about 30 seconds and needs internet once.
+
+
+================================================================================
+3. PHASE 1 - THE PIPELINE
+================================================================================
+
+What it is: the analysis, run as one command. No server, no database to install,
+nothing to configure. Produces a dashboard you open by double-clicking it.
+
+    cd ~/Desktop/TA_Project/"phase 1"
+    ./run.sh
+
+Takes about 25 seconds. You will see:
+
+    Loading BITS research data
+      IRINS faculty  ... {'faculty_rows': 1094, 'with_scopus_id': 1030}
+      SJR master     ... {'journals': 32186}
+      CiteScore      ... {'journals': 32075, 'subject_rows': 78810}
+      Web of Science ... {'journals': 22643}
+      Scopus export  ... {'total': 140, 'new': 140, 'updated': 0, 'unmatched': 28}
+
+    ... the summary report ...
+
+    wrote output/analysed.xlsx  (140 publications across 10 sheets)
+    wrote output/summary.txt
+    wrote output/dashboard.html  (38 KB, self-contained)
+
+    Verification against the hand-built analysed.xlsx
+    ------------------------------------------------
+      SJR                 121 / 121
+      CiteScore           123 / 123
+      SNIP                121 / 121
+      H index             122 / 122
+      Impact Factor        95 / 95
+      Quartile            114 / 114
+      Type                 95 / 95
+      Faculty attributed  112 / 140     (manual sheet: 112)
+      every comparable value agrees
+
+That last block is the point of phase 1: it proves the automated joins land on
+exactly the values a person arrived at by hand.
+
+WHAT YOU GET
+
+    output/dashboard.html    the dashboard - open this one
+    output/analysed.xlsx     10 sheets: the enriched publication list plus every
+                             aggregate that used to be a pivot table
+    output/summary.txt       the same report as plain text
+
+To open the dashboard:
+
+    open output/dashboard.html
+
+It is a single self-contained file - the charts and the stylesheet are inside
+it. You can email it to someone and it opens on their machine. No server, no
+internet, nothing to install.
+
+OTHER COMMANDS
+
+    ./run.sh dashboard    rebuild the dashboard and open it in your browser
+    ./run.sh report       re-print the report and rewrite all three outputs
+    ./run.sh verify       just the check against the hand-built spreadsheet
+    ./run.sh reset        delete the database and start over
+
+    ./run.sh load --scopus path/to/another_export.xlsx     load one file only
+
+Re-running is safe. Publications are matched on their Scopus EID, so loading the
+same file twice updates the records rather than duplicating them - the second
+run reports 'new': 0, 'updated': 140.
+
+The database is one file: phase 1/data/bits.db. Delete it to start over.
+
+
+================================================================================
+4. PHASE 2 - THE DASHBOARD
+================================================================================
+
+What it is: the same data behind a live web dashboard you can filter. Still no
+database server and still no build step.
+
+    cd ~/Desktop/TA_Project/"phase 2"
+    ./run.sh
+
+Then open:  http://localhost:8000
+
+On a fresh machine the first run loads the sample data first (about 25 seconds)
+and says so. After that it starts in a second or two. You will see:
+
+    dashboard on http://localhost:8000   (API docs at /docs)
+    INFO:     Uvicorn running on http://127.0.0.1:8000
+
+Press Ctrl+C to stop it.
+
+WHAT TO LOOK AT
+
+    Executive summary   headline numbers, publications by year, quartile mix,
+                        campus and document-type splits, top journals/subjects
+    Campuses            Pilani, Goa, Hyderabad and Dubai side by side
+    Departments         pick a campus, then a department, for the drill-down
+    Faculty             search the roster, click a name for the full profile
+    Publications        every paper with its journal metrics, sortable
+    Upload              drop a new Scopus file in through the browser
+
+The filters at the top of the page change every number, chart and table below
+them. They also go into the address bar, so you can bookmark a view or paste the
+link into an email and it reopens exactly as you left it, for example:
+
+    http://localhost:8000/#/publications?campus_id=3&quartile=Q1
+
+API documentation is at http://localhost:8000/docs
+
+OTHER COMMANDS
+
+    ./run.sh load     reload the masters and the Scopus export from the CLI
+    ./run.sh reset    delete the database and start over
+
+The database is one file: phase 2/data/bits.db
+
+
+================================================================================
+5. PHASE 3 - THE PRODUCTION SYSTEM
+================================================================================
+
+What it is: the full system - MySQL, a React interface, an admin review queue,
+an API key on the upload endpoints, and CSV/Excel export on every view.
+
+ON THIS MACHINE (already set up):
+
+    cd ~/Desktop/TA_Project/"phase 3"
+    ./run.sh
+
+Then open:  http://localhost:8000
+
+ON A FRESH MACHINE (first time only):
+
+    cd ~/Desktop/TA_Project/"phase 3"
+    cp .env.example .env
+    # open .env and set BITS_DB_PASSWORD to your MySQL root password
+    ./run.sh setup          # creates the database and loads the data, ~60s
+    ./run.sh
+
+`./run.sh setup` will ask for your MySQL root password once, to create the
+database. It uses its own database, bits_research_p3, so it never touches the
+main project's data.
+
+WHAT IS NEW HERE, COMPARED WITH PHASE 2
+
+  1. ATTRIBUTION REVIEW  (left sidebar, with a red badge showing 37)
+     The 28 publications whose authors are not on the IRINS roster. For each
+     one you can map the author to a faculty member, or rule that they are not
+     faculty. The decision is stored against their Scopus Author ID, so it
+     applies to all their past papers and every future upload automatically.
+
+  2. EXPORT  (the CSV / Excel buttons under the filter bar on every page)
+     Downloads exactly what you are looking at, filters included. The Upload
+     page also has "Download full workbook" - every view as one Excel file,
+     with a sheet recording which filters produced it.
+
+  3. UPLOAD KEY  (Upload page, top card)
+     Out of the box the uploads are unprotected and an orange banner across
+     the top says so. To lock them, put a key in .env and restart:
+
+         BITS_API_KEY=some-long-random-string
+
+     The banner disappears, uploads then need that key entered once on the
+     Upload page, and the API returns 401 without it. Reads are never locked -
+     the numbers stay visible to everyone.
+
+  4. METRICS YEAR
+     Journal metrics are stored per year, so a new vintage sits alongside the
+     old one instead of overwriting it:
+
+         .venv/bin/python backend/load_data.py --citescore "CiteScore 2026.xlsx" --year 2026
+
+     A "Metrics year" dropdown then appears in the filter bar. It stays hidden
+     while only one vintage is loaded, which is why you will not see it yet.
+
+DEVELOPMENT MODE
+
+    ./run.sh dev      API on :8000, React with hot reload on :5173
+
+Use this only if you are editing the frontend code. The normal ./run.sh serves
+the already-built version, so frontend edits will not show up until you either
+rebuild (cd frontend && npm run build) or use dev mode.
+
+
+================================================================================
+6. THE MAIN PROJECT
+================================================================================
+
+What it is: the original project, in the TA_Project folder itself. Same stack as
+phase 3, without the four additions listed in section 5.
+
+ON THIS MACHINE (already set up):
+
+    cd ~/Desktop/TA_Project
+    ./run.sh
+
+Then open:  http://localhost:8000
+
+ON A FRESH MACHINE (first time only):
+
+    cd ~/Desktop/TA_Project
+
+    python3 -m venv .venv
+    .venv/bin/pip install -r backend/requirements.txt
+
+    cp .env.example .env
+    # open .env and set BITS_DB_PASSWORD to your MySQL root password
+
+    mysql -u root -p < backend/sql/schema.sql        # creates the 14 tables
+    .venv/bin/python backend/load_data.py --all      # ~50 seconds
+
+    cd frontend && npm install && npm run build && cd ..
+
+    ./run.sh
+
+It uses the database bits_research (phase 3 uses bits_research_p3), so the two
+never collide.
+
+    ./run.sh dev      API on :8000, React with hot reload on :5173
+
+Full documentation is in README.md in that folder.
+
+
+================================================================================
+7. IMPORTANT - ONLY ONE SERVER AT A TIME
+================================================================================
+
+Phase 2, phase 3 and the main project all listen on port 8000. If you start a
+second one while the first is still running you will see:
+
+    ERROR:    [Errno 48] error while attempting to bind on address
+              ('127.0.0.1', 8000): [errno 48] address already in use
+
+Stop the running one with Ctrl+C in its Terminal window first.
+
+If you closed the window without stopping it, free the port with:
+
+    lsof -ti:8000 | xargs kill -9
+
+To check what is on port 8000 right now:
+
+    lsof -i:8000
+
+Phase 1 is not affected - it does not run a server at all, so you can run it
+while any of the others is up.
+
+To run two at once for a side-by-side comparison, give one of them a different
+port:
+
+    cd ~/Desktop/TA_Project/"phase 2"
+    .venv/bin/python main.py serve --port 8001        # then localhost:8001
+
+    cd ~/Desktop/TA_Project/"phase 3"
+    .venv/bin/python -m uvicorn app.main:app --app-dir backend --port 8002
+
+
+================================================================================
+8. WHICH DATABASE IS WHICH
+================================================================================
+
+    phase 1      SQLite    phase 1/data/bits.db          (a file)
+    phase 2      SQLite    phase 2/data/bits.db          (a file)
+    phase 3      MySQL     bits_research_p3
+    main         MySQL     bits_research
+
+They are completely separate. Loading, uploading or resetting one has no effect
+on the others.
+
+To look at the MySQL ones directly:
+
+    mysql -u root -p -e "SELECT COUNT(*) FROM bits_research.publication;"
+    mysql -u root -p -e "SELECT COUNT(*) FROM bits_research_p3.publication;"
+
+Both should say 140.
+
+To start a MySQL copy over from scratch:
+
+    mysql -u root -p -e "DROP DATABASE IF EXISTS bits_research_p3;"
+    cd ~/Desktop/TA_Project/"phase 3" && ./run.sh setup
+
+
+================================================================================
+9. IF SOMETHING GOES WRONG
+================================================================================
+
+"address already in use"
+    Another copy is already running on port 8000. See section 7.
+
+"command not found: ./run.sh"  or  "permission denied"
+    You are in the wrong folder, or the file lost its executable bit:
+        cd ~/Desktop/TA_Project/"phase 1"
+        chmod +x run.sh
+        ./run.sh
+
+"no such file or directory: phase"
+    The folder name has a space in it. Put it in quotes:
+        cd "phase 1"        not        cd phase 1
+
+"Can't connect to MySQL server"                        (phase 3, main)
+    MySQL is not running:
+        brew services start mysql
+
+"Access denied for user 'root'@'localhost'"            (phase 3, main)
+    The password in .env does not match your MySQL root password. Open .env and
+    fix BITS_DB_PASSWORD.
+
+The page loads but every number is blank
+    The database is empty. Load it:
+        phase 1 / phase 2:   ./run.sh load
+        phase 3:             ./run.sh setup
+        main:                .venv/bin/python backend/load_data.py --all
+
+"Not a Scopus export - missing columns: ..."
+    The file you uploaded is not a Scopus export. It must contain at least
+    Authors, Title, Year, Source title and EID. Export from Scopus with all
+    fields selected.
+
+"expected column(s) not found: quartile"
+    A master file was re-issued with a column renamed. This is deliberate - the
+    load is refused rather than writing empty values over good data. The fix is
+    to add the new column name to the loader's spec; the error names the file
+    and the column. See "Updating the master sheets" in the README.
+
+Frontend changes are not showing                       (phase 3, main)
+    ./run.sh serves the built bundle. Either rebuild it:
+        cd frontend && npm run build
+    or use hot-reload mode:
+        ./run.sh dev
+
+A publication shows no SJR / CiteScore / impact factor
+    Not a bug. That journal's ISSN is not in the relevant master, or the record
+    has no ISSN at all - common for book chapters and conference proceedings.
+    16 of the 140 sample records have no ISSN.
+
+A professor's page is empty
+    They are probably in the attribution queue rather than matched, or their
+    IRINS record has no Scopus Author ID. Check Attribution review (phase 3).
+
+
+================================================================================
+10. SUGGESTED ORDER FOR A DEMONSTRATION
+================================================================================
+
+The three phases tell one story: the same problem, solved three times, each
+time better. Showing them in order takes about 10 minutes.
+
+  1. THE PROBLEM
+     Open analysed.xlsx in the project root. This is the spreadsheet that was
+     being built by hand: for each of 140 papers, someone looked the journal up
+     in three separate master files and typed in six numbers.
+
+  2. PHASE 1 - automate it
+         cd ~/Desktop/TA_Project/"phase 1" && ./run.sh
+     Let it run. Point at the verification table at the end: every value the
+     pipeline computed matches the one that was worked out by hand.
+         open output/dashboard.html
+     One self-contained file. Charts, tables, the whole analysis.
+     The limitation to name out loud: it is a snapshot. To see only Hyderabad,
+     or only Q1 papers, you would have to edit the code and run it again.
+
+  3. PHASE 2 - make it answerable
+         cd ~/Desktop/TA_Project/"phase 2" && ./run.sh
+         open http://localhost:8000
+     Change the Campus filter to Hyderabad. Every number, chart and table
+     updates. Show that the URL changed too, so the view can be bookmarked or
+     emailed. Open a faculty profile. Then the Upload page - the weekly file now
+     goes in through the browser instead of the command line.
+     The limitation to name: the upload is open to anyone who can reach the
+     page, the unattributed authors can be seen but not fixed, and it is SQLite,
+     which means one writer at a time.
+
+     Ctrl+C to stop it before starting phase 3.
+
+  4. PHASE 3 - make it a system
+         cd ~/Desktop/TA_Project/"phase 3" && ./run.sh
+         open http://localhost:8000
+     Four things to show:
+       - the orange banner saying uploads are unprotected, and the Upload page
+         card that explains how to lock them;
+       - Attribution review in the sidebar - resolve one entry and watch the
+         badge drop;
+       - the CSV / Excel buttons under the filter bar, and that the download
+         respects whatever filters are set;
+       - the Upload page's "Download full workbook".
+
+  5. THE THREE READMEs
+     Each phase folder has a README.md that opens with what that phase added
+     and closes with what it deliberately left for the next one. PHASES.md in
+     the project root is the one-page overview of all three.
+
+
+================================================================================
+WHERE TO READ MORE
+================================================================================
+
+    PHASES.md            one page on all three phases and how they differ
+    README.md            the main project, in full
+    phase 1/README.md    the pipeline: the joins, the verification, the workbook
+    phase 2/README.md    the dashboard: the API, the weekly workflow
+    phase 3/README.md    the production system: the four additions, in detail
+
+================================================================================
