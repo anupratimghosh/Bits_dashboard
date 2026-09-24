@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
-import { RankedBars } from '../components/Charts'
-import { Card, ErrorBox, Quartile, Spinner } from '../components/UI'
+import { QuartileBar, RankedBars } from '../components/Charts'
+import { Card, ErrorBox, Spinner } from '../components/UI'
 import { dec, num } from '../format'
 import { useApiAll, useFilters } from '../useData'
 
@@ -84,33 +84,18 @@ export default function Campuses() {
           </Card>
 
           <Card title="Quartile mix by campus" note="SJR best quartile of the publishing journal">
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Campus</th>
-                    <th className="num"><Quartile value="Q1" /></th>
-                    <th className="num"><Quartile value="Q2" /></th>
-                    <th className="num"><Quartile value="Q3" /></th>
-                    <th className="num"><Quartile value="Q4" /></th>
-                    <th className="num">Unranked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campuses.map((c) => (
-                    <tr key={c.id}>
-                      <td className="t-title">{c.name}</td>
-                      <td className="num">{num(c.q1)}</td>
-                      <td className="num">{num(c.q2)}</td>
-                      <td className="num">{num(c.q3)}</td>
-                      <td className="num">{num(c.q4)}</td>
-                      <td className="num">
-                        {num(c.publications - c.q1 - c.q2 - c.q3 - c.q4)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="stack">
+              {campuses.map((c) => (
+                <div key={c.id}>
+                  <div className="t-title" style={{ marginBottom: 6 }}>{c.name}</div>
+                  <QuartileBar
+                    counts={{
+                      Q1: c.q1, Q2: c.q2, Q3: c.q3, Q4: c.q4,
+                      Unranked: c.publications - c.q1 - c.q2 - c.q3 - c.q4,
+                    }}
+                  />
+                </div>
+              ))}
             </div>
           </Card>
         </div>

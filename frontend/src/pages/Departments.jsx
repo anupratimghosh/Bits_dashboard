@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { QuartileBar, QuartileStack, RankedBars, TimeBars } from '../components/Charts'
-import { Card, ErrorBox, Spinner, Stat, Th } from '../components/UI'
+import { BarCell, Card, ErrorBox, Spinner, Stat, Th } from '../components/UI'
 import { dec, num } from '../format'
 import { useApi, useApiAll, useFilters } from '../useData'
 
@@ -39,6 +39,11 @@ export default function Departments() {
   const faculty = useApi('/analytics/top-faculty', { ...filters, limit: 10 }, Boolean(selected))
   const journals = useApi('/analytics/top-journals', { ...filters, limit: 8 }, Boolean(selected))
   const subjects = useApi('/analytics/top-subjects', { ...filters, limit: 8 }, Boolean(selected))
+
+  const facultyMax = Math.max(1, ...(faculty.data || []).map((f) => f.publications || 0))
+  const journalsMax = Math.max(1, ...(journals.data || []).map((j) => j.publications || 0))
+
+  const deptMax = Math.max(1, ...(data.depts || []).map((d2) => d2.publications || 0))
 
   const rows = [...(data.depts || [])].sort((a, b) => {
     const av = a[sort], bv = b[sort]
@@ -104,7 +109,7 @@ export default function Departments() {
                     {(faculty.data || []).map((f) => (
                       <tr key={f.id}>
                         <td><Link to={`/faculty/${f.id}`} className="t-title">{f.name}</Link></td>
-                        <td className="num">{num(f.publications)}</td>
+                        <td className="num"><BarCell value={f.publications} max={facultyMax} /></td>
                         <td className="num">{num(f.q1)}</td>
                       </tr>
                     ))}
@@ -118,7 +123,7 @@ export default function Departments() {
                   <thead><tr><th>Journal</th><th className="num">Pubs</th></tr></thead>
                   <tbody>
                     {(journals.data || []).map((j, i) => (
-                      <tr key={i}><td className="t-wide">{j.journal}</td><td className="num">{num(j.publications)}</td></tr>
+                      <tr key={i}><td className="t-wide">{j.journal}</td><td className="num"><BarCell value={j.publications} max={journalsMax} /></td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -157,9 +162,11 @@ export default function Departments() {
                     <td key={c.key} className={c.num ? 'num' : 't-title'}>
                       {c.key === 'name'
                         ? r.name
-                        : r[c.key] === null || r[c.key] === undefined
-                          ? <span className="muted">--</span>
-                          : c.digits ? dec(r[c.key], c.digits) : num(r[c.key])}
+                        : c.key === 'publications'
+                          ? <BarCell value={r.publications} max={deptMax} />
+                          : r[c.key] === null || r[c.key] === undefined
+                            ? <span className="muted">--</span>
+                            : c.digits ? dec(r[c.key], c.digits) : num(r[c.key])}
                     </td>
                   ))}
                 </tr>

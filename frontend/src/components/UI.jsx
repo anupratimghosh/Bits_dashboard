@@ -108,6 +108,20 @@ export function Metric({ value, digits = 2 }) {
   return <span className="num">{value === null || value === undefined ? <span className="muted">--</span> : dec(value, digits)}</span>
 }
 
+/** Bar-in-cell magnitude cue for a ranked table column -- one hue, no rank
+ *  coloring, since the bar length already encodes the rank. `max` is the
+ *  largest value in the column so bars stay comparable across rows. */
+export function BarCell({ value, max }) {
+  if (value === null || value === undefined) return <span className="muted">--</span>
+  const pct = max > 0 ? Math.max((value / max) * 100, 3) : 0
+  return (
+    <div style={{ minWidth: 64 }}>
+      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(value)}</div>
+      <div className="minibar-track"><div className="minibar" style={{ width: `${pct}%` }} /></div>
+    </div>
+  )
+}
+
 export function ThemeToggle() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'system')
   useEffect(() => {

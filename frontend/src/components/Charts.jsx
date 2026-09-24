@@ -1,5 +1,5 @@
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer,
+  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis, LabelList,
 } from 'recharts'
 import { num } from '../format'
@@ -186,6 +186,79 @@ export function Trend({ data, xKey, yKey, name, height = 200, color = 'var(--ser
         </Line>
       </LineChart>
     </ResponsiveContainer>
+  )
+}
+
+const DONUT_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)']
+
+function DonutTooltip({ active, payload, total }) {
+  if (!active || !payload?.length) return null
+  const p = payload[0]
+  const pct = total ? ((p.value / total) * 100).toFixed(1) : '0.0'
+  return (
+    <div className="tooltip">
+      <div className="tooltip-title">{p.name}</div>
+      <div className="tooltip-row">
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span className="legend-swatch" style={{ background: p.payload.fill, width: 8, height: 8 }} />
+          {num(p.value)}
+        </span>
+        <span>{pct}%</span>
+      </div>
+    </div>
+  )
+}
+
+/** Part-to-whole for a true partition -- every record contributes to exactly
+ *  one wedge, so the ring always reads as 100% (unlike campus or subject
+ *  tallies, where one record counts toward several categories and a donut
+ *  would misstate the total). Categorical hues in fixed slot order; a long
+ *  tail folds into "Other" so the ring never exceeds four wedges plus the
+ *  remainder. The hole carries the total, like a small hero figure -- no
+ *  on-arc labels, since the legend + tooltip already carry identity and share. */
+export function Donut({ data, labelKey, valueKey, height = 240, maxSlices = 4 }) {
+  if (!data?.length) return <div className="empty">No data for this selection</div>
+  const sorted = [...data].sort((a, b) => b[valueKey] - a[valueKey])
+  const head = sorted.slice(0, maxSlices)
+  const otherTotal = sorted.slice(maxSlices).reduce((s, r) => s + r[valueKey], 0)
+  const slices = otherTotal > 0 ? [...head, { [labelKey]: 'Other', [valueKey]: otherTotal }] : head
+  const total = slices.reduce((s, r) => s + r[valueKey], 0)
+  const colorFor = (i) => (i < DONUT_COLORS.length ? DONUT_COLORS[i] : 'var(--q-unranked)')
+
+  return (
+    <>
+      <Legend
+        items={slices.map((s, i) => ({
+          label: `${s[labelKey]} · ${((s[valueKey] / total) * 100).toFixed(0)}%`,
+          color: colorFor(i),
+        }))}
+      />
+      <div style={{ position: 'relative' }}>
+        <ResponsiveContainer width="100%" height={height}>
+          <PieChart>
+            <Tooltip content={<DonutTooltip total={total} />} />
+            <Pie
+              data={slices} dataKey={valueKey} nameKey={labelKey}
+              innerRadius="62%" outerRadius="92%" paddingAngle={2} cornerRadius={4}
+              stroke="var(--surface-1)" strokeWidth={2} isAnimationActive={false}
+            >
+              {slices.map((s, i) => <Cell key={s[labelKey]} fill={colorFor(i)} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
+          }}
+        >
+          <div style={{ fontSize: 22, fontWeight: 640, letterSpacing: '-0.02em' }}>{num(total)}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Total
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
-import { QuartileStack, RankedBars, TimeBars, Trend } from '../components/Charts'
-import { Card, ErrorBox, Spinner, Stat } from '../components/UI'
+import { Donut, QuartileStack, RankedBars, TimeBars, Trend } from '../components/Charts'
+import { BarCell, Card, ErrorBox, Spinner, Stat } from '../components/UI'
 import { dec, growthLabel, num } from '../format'
 import { useApiAll, useFilters } from '../useData'
 
@@ -19,6 +19,7 @@ export default function Overview() {
 
   const k = data.kpi
   const growth = k ? growthLabel(k.yoy_growth_pct) : null
+  const journalsMax = Math.max(1, ...(data.journals || []).map((j) => j.publications || 0))
 
   return (
     <div>
@@ -87,8 +88,8 @@ export default function Overview() {
                 across two campuses is credited in full to both.
               </div>
             </Card>
-            <Card title="Publications by document type">
-              <RankedBars data={data.byType} labelKey="document_type" valueKey="publications" name="Publications" />
+            <Card title="Publications by document type" note="every publication counts toward exactly one type">
+              <Donut data={data.byType} labelKey="document_type" valueKey="publications" />
             </Card>
           </div>
 
@@ -111,7 +112,7 @@ export default function Overview() {
                     {(data.journals || []).map((j) => (
                       <tr key={`${j.journal_id}-${j.journal}`}>
                         <td className="t-wide">{j.journal}</td>
-                        <td className="num">{num(j.publications)}</td>
+                        <td className="num"><BarCell value={j.publications} max={journalsMax} /></td>
                         <td className="num">{dec(j.citescore, 1)}</td>
                         <td className="num">{dec(j.impact_factor, 1)}</td>
                       </tr>
