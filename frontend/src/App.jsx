@@ -15,30 +15,28 @@ function Nav() {
   const { data: stats } = useApi('/admin/stats')
   const queue = stats?.open_queue || 0
   return (
-    <nav className="sidebar">
+    <header className="topbar">
       <div className="brand">
         <div className="brand-mark">BITS Research Analytics</div>
-        <div className="brand-sub">Scopus · IRINS · SJR · CiteScore · WoS</div>
       </div>
 
-      <div className="nav">
-        <div className="nav-group">Analysis</div>
+      <nav className="nav" aria-label="Main">
         <NavLink to="/" end>Executive summary</NavLink>
         <NavLink to="/campuses">Campuses</NavLink>
         <NavLink to="/departments">Departments</NavLink>
         <NavLink to="/faculty">Faculty</NavLink>
         <NavLink to="/publications">Publications</NavLink>
 
-        <div className="nav-group">Data</div>
+        <span className="nav-sep" aria-hidden="true" />
         <NavLink to="/upload">Upload</NavLink>
         <NavLink to="/review">
           Attribution review
           {queue > 0 && <span className="nav-badge">{queue}</span>}
         </NavLink>
-      </div>
+      </nav>
 
       <ThemeToggle />
-    </nav>
+    </header>
   )
 }
 
