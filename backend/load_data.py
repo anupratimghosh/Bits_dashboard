@@ -11,7 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from app.ingest import masters, scopus  # noqa: E402
+from app.db import ensure_schema  # noqa: E402
+from app.ingest import crossref, masters, scopus  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MASTER_DIR = ROOT / "Master File"
@@ -41,6 +42,8 @@ def main():
     p.add_argument("--citescore", nargs="?", const=str(DEFAULTS["citescore"]))
     p.add_argument("--wos", nargs="?", const=str(DEFAULTS["wos"]))
     p.add_argument("--scopus", nargs="?", const=str(DEFAULTS["scopus"]))
+    p.add_argument("--dates", action="store_true",
+                   help="look up publication dates on Crossref (runs after --scopus anyway)")
     p.add_argument("--year", type=int, default=2025, help="metrics vintage")
     a = p.parse_args()
 
@@ -50,6 +53,7 @@ def main():
                 setattr(a, k, str(DEFAULTS[k]))
 
     print("Loading BITS research data")
+    ensure_schema()
     if a.irins:
         step("IRINS faculty ", masters.load_irins, a.irins)
     if a.sjr:
@@ -61,6 +65,8 @@ def main():
     if a.scopus:
         step("Scopus export ", scopus.ingest_scopus, a.scopus,
              filename=Path(a.scopus).name, uploaded_by="bootstrap")
+    if a.scopus or a.dates:
+        step("Crossref dates", crossref.fill_pub_dates)
     print("done")
 
 

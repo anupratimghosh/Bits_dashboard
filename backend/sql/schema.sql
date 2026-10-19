@@ -116,6 +116,11 @@ CREATE TABLE IF NOT EXISTS publication (
   eid                 VARCHAR(64) NOT NULL UNIQUE,   -- idempotency key for weekly upserts
   title               VARCHAR(1024) NOT NULL,
   year                SMALLINT NULL,
+  -- Scopus exports carry only the year; the full date (for financial-year
+  -- quarters) is looked up on Crossref by DOI after each upload
+  pub_date            DATE NULL,
+  pub_date_source     VARCHAR(24) NULL,              -- crossref-print|crossref-online|crossref-issued
+  date_checked_at     DATETIME NULL,                 -- last Crossref attempt; NULL => not tried yet
   document_type       VARCHAR(64) NULL,
   doi                 VARCHAR(255) NULL,
   link                VARCHAR(1024) NULL,
@@ -147,6 +152,7 @@ CREATE TABLE IF NOT EXISTS publication (
   CONSTRAINT fk_pub_batch1  FOREIGN KEY (first_seen_batch_id) REFERENCES upload_batch(id),
   CONSTRAINT fk_pub_batch2  FOREIGN KEY (last_batch_id) REFERENCES upload_batch(id),
   INDEX ix_pub_year (year),
+  INDEX ix_pub_date (pub_date),
   INDEX ix_pub_doctype (document_type),
   INDEX ix_pub_matched (faculty_matched),
   INDEX ix_pub_title (title(191))

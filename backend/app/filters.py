@@ -6,6 +6,7 @@ publication that satisfies both the Goa filter and the Hyderabad filter, so it
 counts once in each campus total and once in the institute total.
 """
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Optional
 
 from .config import CURRENT_METRIC_YEAR
@@ -21,10 +22,32 @@ def like(term: str) -> str:
     return f"%{escaped}%"
 
 
+# Indian financial year: FY 2026 = 2026-27 = Apr 2026 .. Mar 2027, and
+# Q1 = Apr-Jun, Q2 = Jul-Sep, Q3 = Oct-Dec, Q4 = Jan-Mar.
+FY_SQL = "(YEAR(p.pub_date) - (MONTH(p.pub_date) < 4))"
+FQ_SQL = "(((MONTH(p.pub_date) + 8) % 12) DIV 3 + 1)"
+
+
+def fy_quarter_range(fy: int, fq: Optional[int] = None):
+    """[start, end) dates of a financial year, or of one quarter of it."""
+    if not fq:
+        return date(fy, 4, 1), date(fy + 1, 4, 1)
+    m = 3 + 3 * (fq - 1)          # months after 1 Jan of `fy`, 0-based
+    start = date(fy + m // 12, m % 12 + 1, 1)
+    m += 3
+    return start, date(fy + m // 12, m % 12 + 1, 1)
+
+
+def fy_label(fy: int) -> str:
+    return f"{fy}-{(fy + 1) % 100:02d}"
+
+
 @dataclass
 class PubFilters:
     year_from: Optional[int] = None
     year_to: Optional[int] = None
+    fy: Optional[int] = None      # financial year (start year); needs a Crossref date
+    fq: Optional[int] = None      # financial quarter 1-4
     campus_id: Optional[int] = None
     department_id: Optional[int] = None
     faculty_id: Optional[int] = None
@@ -49,6 +72,14 @@ class PubFilters:
             w.append("p.year >= :year_from"); p["year_from"] = self.year_from
         if self.year_to is not None:
             w.append("p.year <= :year_to"); p["year_to"] = self.year_to
+        # quarter filters can only match papers with a known date -- the UI
+        # says so next to the dropdown
+        if self.fy is not None:
+            start, end = fy_quarter_range(self.fy, self.fq)
+            w.append("p.pub_date >= :fy_start AND p.pub_date < :fy_end")
+            p["fy_start"], p["fy_end"] = start, end
+        elif self.fq:
+            w.append(f"{FQ_SQL} = :fq"); p["fq"] = self.fq
         if self.document_type:
             w.append("p.document_type = :document_type")
             p["document_type"] = self.document_type

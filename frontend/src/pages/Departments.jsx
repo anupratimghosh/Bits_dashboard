@@ -10,6 +10,7 @@ const COLUMNS = [
   { key: 'name', label: 'Department' },
   { key: 'publications', label: 'Pubs', num: true },
   { key: 'citations', label: 'Citations', num: true },
+  { key: 'h_index', label: 'h-index', num: true },
   { key: 'faculty', label: 'Faculty', num: true },
   { key: 'q1', label: 'Q1', num: true },
   { key: 'q2', label: 'Q2', num: true },

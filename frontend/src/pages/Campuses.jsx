@@ -8,6 +8,7 @@ import { useApiAll, useFilters } from '../useData'
 const MEASURES = [
   { key: 'publications', label: 'Publications', digits: 0 },
   { key: 'citations', label: 'Citations', digits: 0 },
+  { key: 'h_index', label: 'h-index', digits: 0 },
   { key: 'q1', label: 'Q1 publications', digits: 0 },
   { key: 'with_if', label: 'With impact factor', digits: 0 },
   { key: 'avg_sjr', label: 'Average SJR', digits: 3 },
@@ -41,12 +42,15 @@ export default function Campuses() {
 
       {campuses.length > 0 && (
         <div className="stack">
-          <div className="grid cols-2">
+          <div className="grid cols-3">
             <Card title="Publications by campus">
               <RankedBars data={campuses} labelKey="name" valueKey="publications" name="Publications" />
             </Card>
             <Card title="Q1 journal publications by campus">
               <RankedBars data={campuses} labelKey="name" valueKey="q1" name="Q1 publications" />
+            </Card>
+            <Card title="h-index by campus" note="over each campus's publications held here">
+              <RankedBars data={campuses} labelKey="name" valueKey="h_index" name="h-index" />
             </Card>
           </div>
 

@@ -26,3 +26,11 @@ export const QUARTILE_COLORS = {
 }
 
 export const SERIES = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)']
+
+// Indian financial year: FY 2026-27 runs Apr 2026 - Mar 2027
+export const FY_QUARTERS = [
+  { q: 1, label: 'Q1 · Apr–Jun' },
+  { q: 2, label: 'Q2 · Jul–Sep' },
+  { q: 3, label: 'Q3 · Oct–Dec' },
+  { q: 4, label: 'Q4 · Jan–Mar' },
+]

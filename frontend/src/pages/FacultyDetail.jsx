@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { QuartileBar, RankedBars, TimeBars } from '../components/Charts'
 import { Card, ErrorBox, FieldGrid, Quartile, Spinner, Stat, Th } from '../components/UI'
-import { dec, num } from '../format'
+import { dec, FY_QUARTERS, growthLabel, num } from '../format'
 import { useApi } from '../useData'
 
 const COLUMNS = [
   { key: 'year', label: 'Year', num: true },
+  { key: 'pub_date', label: 'Published' },
   { key: 'title', label: 'Title' },
   { key: 'journal', label: 'Journal / source' },
   { key: 'document_type', label: 'Type' },
@@ -18,6 +19,10 @@ const COLUMNS = [
 
 const Q_ORDER = { Q1: 1, Q2: 2, Q3: 3, Q4: 4 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// month + year only: Crossref often has no day, and the stored day is then 1
+const monthYear = (iso) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+
 const ext = (href, text) => (
   <a href={href} target="_blank" rel="noreferrer" style={{ color: 'var(--series-1)' }}>{text}</a>
 )
@@ -27,6 +32,7 @@ export default function FacultyDetail() {
   const { data, error, loading } = useApi(`/faculty/${id}`)
   const [sort, setSort] = useState('year')
   const [order, setOrder] = useState('desc')
+  const [fySel, setFySel] = useState(null)
 
   if (loading) return <Spinner label="Loading profile…" />
   if (error) return <ErrorBox error={error} />
@@ -89,6 +95,12 @@ export default function FacultyDetail() {
     if (field === sort) setOrder(order === 'asc' ? 'desc' : 'asc')
     else { setSort(field); setOrder(['title', 'journal', 'document_type', 'quartile'].includes(field) ? 'asc' : 'desc') }
   }
+
+  // newest financial year by default; the dropdown switches between them
+  const fyRow = data.by_quarter.find((r) => String(r.fy) === String(fySel)) || data.by_quarter[0]
+  const quarterBars = fyRow
+    ? fyRow.quarters.map((r) => ({ ...r, label: FY_QUARTERS[r.quarter - 1].label }))
+    : []
 
   const quartileCounts = Object.fromEntries(data.quartiles.map((q) => [q.quartile, q.publications]))
 
@@ -153,6 +165,63 @@ export default function FacultyDetail() {
           </Card>
         </div>
 
+        <div className="grid cols-2">
+          <Card title="Year-on-year publications" note="change against the previous year">
+            {data.by_year.length ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Year</th>
+                      <th className="num">Publications</th>
+                      <th className="num">Change</th>
+                      <th className="num">Growth</th>
+                      <th className="num">Citations</th>
+                      <th className="num">Q1</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...data.by_year].reverse().map((r) => (
+                      <tr key={r.year}>
+                        <td className="t-title">{r.year}</td>
+                        <td className="num">{num(r.publications)}</td>
+                        <td className="num">
+                          {r.change === null ? <span className="muted">--</span> : `${r.change > 0 ? '+' : ''}${r.change}`}
+                        </td>
+                        <td className="num">
+                          {r.growth_pct === null ? <span className="muted">--</span> : growthLabel(r.growth_pct)}
+                        </td>
+                        <td className="num">{num(r.citations)}</td>
+                        <td className="num">{num(r.q1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <div className="empty">No dated publications</div>}
+          </Card>
+
+          <Card title="Quarter-wise publications" note="Indian financial year · Q1 = Apr–Jun">
+            {fyRow ? (
+              <>
+                <div className="field" style={{ marginBottom: 12, maxWidth: 220 }}>
+                  <label htmlFor="fd-fy">Financial year</label>
+                  <select id="fd-fy" value={fyRow.fy} onChange={(e) => setFySel(e.target.value)}>
+                    {data.by_quarter.map((r) => <option key={r.fy} value={r.fy}>FY {r.label}</option>)}
+                  </select>
+                </div>
+                <TimeBars data={quarterBars} xKey="label" yKey="publications" name="Publications" height={170} />
+              </>
+            ) : <div className="empty">No publication has a month-level date yet</div>}
+            {s.undated > 0 && (
+              <div className="note" style={{ marginTop: 10 }}>
+                {num(s.undated)} of {num(s.publications)} publications have no month-level date on
+                Crossref, so they are not placed in a quarter.
+              </div>
+            )}
+          </Card>
+        </div>
+
         <div className="grid cols-3">
           <Card title="Top journals">
             <div className="table-wrap">
@@ -214,6 +283,7 @@ export default function FacultyDetail() {
                 {sorted.map((p) => (
                   <tr key={p.id}>
                     <td className="num">{p.year ?? <span className="muted">--</span>}</td>
+                    <td>{p.pub_date ? monthYear(p.pub_date) : <span className="muted">--</span>}</td>
                     <td className="t-wide">
                       <Link to={`/publications/${p.id}`} className="t-title">{p.title}</Link>
                       {p.is_open_access ? <span className="chip chip-oa" style={{ marginLeft: 6 }}>OA</span> : null}

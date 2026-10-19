@@ -11,6 +11,7 @@ const COLUMNS = [
   { key: 'department', label: 'Department' },
   { key: 'publications', label: 'Pubs', num: true },
   { key: 'citations', label: 'Citations', num: true },
+  { key: 'h_index', label: 'h-index', num: true },
   { key: 'q1', label: 'Q1', num: true },
   { key: 'avg_citescore', label: 'Avg CiteScore', num: true, digits: 2 },
   { key: 'avg_impact_factor', label: 'Avg JIF', num: true, digits: 3 },
@@ -111,6 +112,7 @@ export default function FacultyList() {
                   <td>{f.department || <span className="muted">--</span>}</td>
                   <td className="num">{num(f.publications)}</td>
                   <td className="num">{num(f.citations)}</td>
+                  <td className="num">{num(f.h_index)}</td>
                   <td className="num">{num(f.q1)}</td>
                   <td className="num">{f.avg_citescore === null ? <span className="muted">--</span> : dec(f.avg_citescore)}</td>
                   <td className="num">{f.avg_impact_factor === null ? <span className="muted">--</span> : dec(f.avg_impact_factor, 3)}</td>

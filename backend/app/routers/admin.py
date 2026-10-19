@@ -4,13 +4,13 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import text
 
 from ..db import engine, q
 from ..filters import like
-from ..ingest import masters, scopus
+from ..ingest import crossref, masters, scopus
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -33,6 +33,7 @@ def _save_upload(upload: UploadFile) -> Path:
 
 @router.post("/upload/scopus")
 async def upload_scopus(
+    background: BackgroundTasks,
     file: UploadFile = File(...),
     uploaded_by: str = Form("web"),
     snapshot_date: str = Form(None),
@@ -55,7 +56,10 @@ async def upload_scopus(
         raise HTTPException(400, str(exc))
     finally:
         shutil.rmtree(path.parent, ignore_errors=True)
-    return stats
+    # dates for the quarter view come from Crossref, one request per new DOI --
+    # done after the response so the upload is not held up by the network
+    background.add_task(crossref.fill_pub_dates)
+    return {**stats, "dates_pending": True}
 
 
 @router.post("/upload/master/{kind}")
@@ -121,6 +125,14 @@ def resync():
     faculty master was loaded from the command line, or after editing aliases.
     """
     return scopus.resync_faculty()
+
+
+@router.post("/admin/fetch-dates")
+def fetch_dates(limit: int = Query(None, ge=1)):
+    """Look up publication dates on Crossref now, instead of waiting for the
+    next upload -- e.g. after a network failure, or for data loaded before
+    the quarter view existed."""
+    return crossref.fill_pub_dates(limit=limit)
 
 
 @router.get("/upload/batches")
@@ -338,6 +350,9 @@ def admin_stats():
             """SELECT COUNT(*) AS n FROM unmatched_author ua
                JOIN publication p ON p.id = ua.publication_id
                WHERE ua.status = 'open' AND p.faculty_matched = 0"""
+        )[0]["n"],
+        "dated_publications": q(
+            "SELECT COUNT(*) AS n FROM publication WHERE is_bits = 1 AND pub_date IS NOT NULL"
         )[0]["n"],
         "last_upload": (q("SELECT * FROM upload_batch ORDER BY id DESC LIMIT 1") or [None])[0],
     }

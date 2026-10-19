@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from ..config import CURRENT_METRIC_YEAR
 from ..db import q
 from ..deps import filter_params
-from ..filters import PubFilters, like
+from ..filters import FQ_SQL, FY_SQL, PubFilters, fy_label, like
 
 router = APIRouter(prefix="/api/faculty", tags=["faculty"])
 
@@ -18,6 +18,7 @@ SORTABLE = {
     "department": "department",
     "avg_citescore": "avg_citescore",
     "avg_impact_factor": "avg_impact_factor",
+    "h_index": "h_index",
 }
 
 
@@ -55,10 +56,27 @@ def list_faculty(
         LEFT JOIN campus c ON c.id = fa.campus_id
         LEFT JOIN department d ON d.id = fa.department_id
         {join} publication_author pa ON pa.faculty_id = fa.id
-        {join} publication p ON p.id = pa.publication_id AND {where}
+        -- jm is joined inside the parentheses because {where} can test it
+        -- (quartile, impact-factor filters); joined after, MySQL rejected it
+        {join} (publication p
+                LEFT JOIN journal_metric jm ON jm.journal_id = p.journal_id
+                                           AND jm.metric_year = :metric_year)
+            ON p.id = pa.publication_id AND {where}
         LEFT JOIN journal j ON j.id = p.journal_id
-        LEFT JOIN journal_metric jm ON jm.journal_id = p.journal_id
-                                   AND jm.metric_year = :metric_year
+        LEFT JOIN (
+            -- h-index over the same filtered papers the row counts
+            SELECT t.faculty_id, SUM(t.cited_by >= t.rn) AS h_index
+            FROM (SELECT fp.faculty_id, p.cited_by,
+                         ROW_NUMBER() OVER (PARTITION BY fp.faculty_id
+                                            ORDER BY p.cited_by DESC) AS rn
+                  FROM (SELECT DISTINCT faculty_id, publication_id
+                        FROM publication_author WHERE faculty_id IS NOT NULL) fp
+                  JOIN publication p ON p.id = fp.publication_id
+                  LEFT JOIN journal_metric jm ON jm.journal_id = p.journal_id
+                                             AND jm.metric_year = :metric_year
+                  WHERE {where}) t
+            GROUP BY t.faculty_id
+        ) h ON h.faculty_id = fa.id
         WHERE 1 = 1 {extra}
     """
     rows = q(
@@ -69,7 +87,8 @@ def list_faculty(
                    SUM(jm.sjr_quartile = 'Q1') AS q1,
                    SUM(jm.sjr_quartile = 'Q2') AS q2,
                    ROUND(AVG(jm.citescore), 2) AS avg_citescore,
-                   ROUND(AVG(jm.impact_factor), 3) AS avg_impact_factor
+                   ROUND(AVG(jm.impact_factor), 3) AS avg_impact_factor,
+                   COALESCE(MAX(h.h_index), 0) AS h_index
             {body}
             GROUP BY fa.id, fa.name, fa.designation, fa.scopus_author_id,
                      c.name, d.name
@@ -140,19 +159,62 @@ def faculty_detail(faculty_id: int, metric_year: int = Query(CURRENT_METRIC_YEAR
     summary["h_index_from_dataset"] = h
     summary["i10_index"] = sum(1 for c in cites if c >= 10)
 
-    return {
-        # the whole IRINS row, so the profile template can render every column
-        # (expert_id, researcher_id, is_active ... ) instead of a chosen subset
-        "faculty": prof,
-        "summary": summary,
-        "by_year": q(
+    # Year-on-year. Years with no papers are filled in as zero, so growth is
+    # always measured against the year before rather than the last year that
+    # happened to have a paper.
+    found = {
+        r["year"]: r
+        for r in q(
             f"""SELECT p.year, COUNT(*) AS publications,
                        COALESCE(SUM(p.cited_by), 0) AS citations,
                        SUM(jm.sjr_quartile = 'Q1') AS q1
                 {base} AND p.year IS NOT NULL
                 GROUP BY p.year ORDER BY p.year""",
             **args,
-        ),
+        )
+    }
+    by_year, prev = [], None
+    for y in range(min(found, default=0), max(found, default=-1) + 1):
+        r = found.get(y) or {"year": y, "publications": 0, "citations": 0, "q1": 0}
+        r["change"] = None if prev is None else r["publications"] - prev
+        r["growth_pct"] = (
+            round((r["publications"] - prev) / prev * 100, 1) if prev else None
+        )
+        prev = r["publications"]
+        by_year.append(r)
+
+    # Financial-year quarters (Q1 = Apr-Jun), from the Crossref date. Papers
+    # without one are counted separately rather than guessed into a quarter.
+    quarters = q(
+        f"""SELECT {FY_SQL} AS fy, {FQ_SQL} AS quarter,
+                   COUNT(*) AS publications,
+                   COALESCE(SUM(p.cited_by), 0) AS citations
+            {base} AND p.pub_date IS NOT NULL
+            GROUP BY fy, quarter ORDER BY fy, quarter""",
+        **args,
+    )
+    by_quarter = []
+    for fy in sorted({r["fy"] for r in quarters}, reverse=True):
+        got = {r["quarter"]: r for r in quarters if r["fy"] == fy}
+        by_quarter.append({
+            "fy": fy,
+            "label": fy_label(fy),
+            "quarters": [
+                {"quarter": n,
+                 "publications": got.get(n, {}).get("publications", 0),
+                 "citations": got.get(n, {}).get("citations", 0)}
+                for n in (1, 2, 3, 4)
+            ],
+        })
+    summary["undated"] = summary["publications"] - sum(r["publications"] for r in quarters)
+
+    return {
+        # the whole IRINS row, so the profile template can render every column
+        # (expert_id, researcher_id, is_active ... ) instead of a chosen subset
+        "faculty": prof,
+        "summary": summary,
+        "by_year": by_year,
+        "by_quarter": by_quarter,
         "quartiles": q(
             f"""SELECT COALESCE(jm.sjr_quartile, 'Unranked') AS quartile,
                        COUNT(*) AS publications
@@ -209,7 +271,7 @@ def faculty_detail(faculty_id: int, metric_year: int = Query(CURRENT_METRIC_YEAR
             id=faculty_id,
         ),
         "publications": q(
-            f"""SELECT p.id, p.eid, p.title, p.year, p.document_type, p.doi, p.link,
+            f"""SELECT p.id, p.eid, p.title, p.year, p.pub_date, p.document_type, p.doi, p.link,
                        p.cited_by, p.is_open_access, pa.author_seq,
                        COALESCE(j.title, p.source_title) AS journal,
                        jm.sjr_quartile AS quartile, jm.citescore, jm.sjr,

@@ -9,6 +9,8 @@ from .filters import PubFilters
 def filter_params(
     year_from: Optional[int] = Query(None),
     year_to: Optional[int] = Query(None),
+    fy: Optional[int] = Query(None, description="financial year start, e.g. 2026 = FY 2026-27"),
+    fq: Optional[int] = Query(None, ge=1, le=4, description="financial quarter, Q1 = Apr-Jun"),
     campus_id: Optional[int] = Query(None),
     department_id: Optional[int] = Query(None),
     faculty_id: Optional[int] = Query(None),
@@ -24,7 +26,7 @@ def filter_params(
     metric_year: int = Query(CURRENT_METRIC_YEAR),
 ) -> PubFilters:
     return PubFilters(
-        year_from=year_from, year_to=year_to, campus_id=campus_id,
+        year_from=year_from, year_to=year_to, fy=fy, fq=fq, campus_id=campus_id,
         department_id=department_id, faculty_id=faculty_id,
         document_type=document_type, quartile=quartile, open_access=open_access,
         has_if=has_if, subject=subject, journal_id=journal_id, search=search,

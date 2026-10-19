@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { FY_QUARTERS } from '../format'
 import { useApi } from '../useData'
 
 /** One filter row above the charts. Every control writes to the URL, so the
@@ -17,7 +18,7 @@ export default function FilterBar({ filters, setFilter, reset, show = {} }) {
     setTerm(urlSearch)
   }
   const cfg = {
-    year: true, campus: true, department: true, quartile: true,
+    year: true, quarter: true, campus: true, department: true, quartile: true,
     docType: true, search: true, metricYear: true, ...show,
   }
   if (!opts) return <div className="filterbar"><span className="muted">Loading filters…</span></div>
@@ -76,6 +77,31 @@ export default function FilterBar({ filters, setFilter, reset, show = {} }) {
             </select>
           </div>
         </>
+      )}
+
+      {cfg.quarter && opts.financial_years.length > 0 && (
+        <div className="field">
+          <label htmlFor="f-fq">Financial quarter</label>
+          <select
+            id="f-fq"
+            value={filters.fy ? (filters.fq ? `${filters.fy}-${filters.fq}` : filters.fy) : ''}
+            onChange={(e) => {
+              const [fy, fq] = e.target.value.split('-')
+              setFilter({ fy: fy || '', fq: fq || '' })
+            }}
+            title={`Quarters use the publication date from Crossref. ${opts.undated_publications} publications have no month-level date and are left out while a quarter is selected.`}
+          >
+            <option value="">Any period</option>
+            {opts.financial_years.map(({ fy, label }) => (
+              <optgroup key={fy} label={`FY ${label}`}>
+                <option value={fy}>FY {label} · full year</option>
+                {FY_QUARTERS.map(({ q, label: ql }) => (
+                  <option key={q} value={`${fy}-${q}`}>FY {label} · {ql}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
       )}
 
       {cfg.quartile && (

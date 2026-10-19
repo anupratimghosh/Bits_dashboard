@@ -59,7 +59,7 @@ export function useFilters() {
 
   const filters = useMemo(() => {
     const f = {}
-    for (const k of ['year_from', 'year_to', 'campus_id', 'department_id', 'quartile',
+    for (const k of ['year_from', 'year_to', 'fy', 'fq', 'campus_id', 'department_id', 'quartile',
                      'document_type', 'search', 'subject', 'metric_year']) {
       const v = search.get(k)
       if (v) f[k] = v

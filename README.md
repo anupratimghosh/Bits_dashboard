@@ -117,6 +117,13 @@ executive summary once you have two or more uploads.
 Each upload is recorded in `upload_batch` with counts of new, updated and
 unmatched rows — visible as an audit trail at the bottom of the Upload page.
 
+After the upload responds, the server looks up each new paper's **publication
+date on Crossref** by DOI (only the DOI is sent). Scopus exports carry only the
+year, and the quarter view needs a month. Papers where Crossref has only a year
+stay *undated* rather than being guessed into a quarter, and are retried every
+28 days. Network failures are retried on the next run. To run it by hand:
+`.venv/bin/python backend/load_data.py --dates` or `POST /api/admin/fetch-dates`.
+
 ### Refreshing the reference masters
 
 IRINS, SJR, CiteScore and Web of Science change **annually**, not weekly. They
@@ -264,6 +271,19 @@ sample data), and the UI says so on the relevant cards.
 This is standard bibliometric practice and keeps every count an integer. Because
 `publication_author` stores the raw (author, publication) pairs, switching to
 fractional credit later is an analytics-layer change.
+
+### Quarters follow the Indian financial year
+
+Q1 = Apr–Jun, Q2 = Jul–Sep, Q3 = Oct–Dec, Q4 = Jan–Mar; FY 2026-27 runs
+Apr 2026 – Mar 2027. Choosing a quarter in the **Financial quarter** dropdown
+leaves out papers with no month-level date.
+
+### h-index is computed on the papers held here
+
+The faculty, campus, department and institution h-indexes are calculated over
+the BITS publications in this database (and over the current filter), not taken
+from Scopus author profiles. They are not lifetime h-indexes. Campus h-index
+follows the full-credit rule: a cross-campus paper counts toward each campus.
 
 ### Unattributed publications are kept, not dropped
 
@@ -420,18 +440,20 @@ reloading anything. To change the default, set `BITS_METRIC_YEAR`.
 
 Interactive docs at `/docs`. Every analytics endpoint accepts the same filter set:
 
-`year_from` · `year_to` · `campus_id` · `department_id` · `faculty_id` ·
+`year_from` · `year_to` · `fy` · `fq` · `campus_id` · `department_id` · `faculty_id` ·
 `quartile` · `document_type` · `open_access` · `has_if` · `subject` ·
 `journal_id` · `search` · `unmatched_only` · `metric_year`
+
+`fy` is a financial year's start year (`2026` = FY 2026-27) and `fq` a quarter 1–4.
 
 | Endpoint | Returns |
 |---|---|
 | `GET /api/health` | liveness + publication count |
 | `GET /api/filters` | dropdown options (campuses, departments per campus, years, types) plus `default_metric_year`, the vintage the API uses when the caller sends none |
-| `GET /api/overview` | executive KPIs |
+| `GET /api/overview` | executive KPIs, including institution `h_index` and `i10_index` |
 | `GET /api/analytics/by-year` | publications, citations, quartiles and growth per year |
-| `GET /api/analytics/by-campus` | every measure per campus |
-| `GET /api/analytics/by-department` | every measure per department |
+| `GET /api/analytics/by-campus` | every measure per campus, including `h_index` |
+| `GET /api/analytics/by-department` | every measure per department, including `h_index` |
 | `GET /api/analytics/by-quartile` | quartile distribution |
 | `GET /api/analytics/by-document-type` | document-type distribution |
 | `GET /api/analytics/by-open-access` | open access vs subscription |
@@ -439,8 +461,8 @@ Interactive docs at `/docs`. Every analytics endpoint accepts the same filter se
 | `GET /api/analytics/top-subjects` | ranked ASJC subject areas |
 | `GET /api/analytics/top-faculty` | ranked faculty (scoped to the selected campus/department) |
 | `GET /api/analytics/citation-trend` | citations per upload snapshot |
-| `GET /api/faculty` | roster; `sort`, `order`, `page`, `name`, `publishing_only` |
-| `GET /api/faculty/{id}` | full profile: summary, by year, quartiles, journals, subjects, co-authors, publications |
+| `GET /api/faculty` | roster with `h_index`; `sort`, `order`, `page`, `name`, `publishing_only` |
+| `GET /api/faculty/{id}` | full profile: summary, year-on-year, financial-year quarters, quartiles, journals, subjects, co-authors, publications |
 | `GET /api/publications` | sortable list; `sort`, `order`, `page`, `page_size` |
 | `GET /api/publications/{id}` | full record with authors, subjects, citation history |
 | `GET /api/departments/{id}` | department drill-down |
@@ -449,6 +471,7 @@ Interactive docs at `/docs`. Every analytics endpoint accepts the same filter se
 | `POST /api/upload/master/{kind}` | `irins` \| `sjr` \| `citescore` \| `wos` |
 | `GET /api/upload/batches` | upload history |
 | `POST /api/admin/resync` | re-apply faculty matching to all stored publications |
+| `POST /api/admin/fetch-dates` | look up missing publication dates on Crossref now |
 | `GET /api/admin/stats` | database counts and last upload |
 | `GET /api/admin/unmatched` | review queue |
 | `POST /api/admin/unmatched/{id}/resolve` | map to a faculty member (body: `{"faculty_id": N}`) |
@@ -510,6 +533,7 @@ gitignored so credentials never get committed.
 | `BITS_DB_PORT` | `3306` | MySQL port |
 | `BITS_DB_NAME` | `bits_research` | database name |
 | `BITS_METRIC_YEAR` | `2025` | metrics vintage the dashboard reads by default |
+| `CROSSREF_MAILTO` | *(empty)* | optional contact email sent to Crossref, which moves requests into its faster "polite" pool |
 
 ---
 

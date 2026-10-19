@@ -38,7 +38,7 @@ export default function Overview() {
 
       {k && (
         <div className="stack">
-          <div className="grid cols-4">
+          <div className="grid cols-5">
             <Stat
               label="Total publications" value={num(k.total_publications)}
               meta={k.unattributed_publications > 0
@@ -51,6 +51,8 @@ export default function Overview() {
               meta={`vs ${num(k.publications_last_year)} last year`}
             />
             <Stat label="Total citations" value={num(k.total_citations)} meta={`${dec(k.avg_citations)} per publication`} />
+            <Stat label="Institution h-index" value={num(k.h_index)}
+              meta={`i10 ${num(k.i10_index)} · over the publications held here`} />
             <Stat label="Faculty publishing" value={num(k.total_faculty_publishing)} meta={`across ${k.total_departments} departments`} />
           </div>
 

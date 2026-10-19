@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -5,13 +6,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import q
+from .db import ensure_schema, q
 from .routers import admin, analytics, faculty, publications
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    ensure_schema()
+    yield
+
 
 app = FastAPI(
     title="BITS Research Publication Analytics",
     description="Scopus + IRINS + SJR + CiteScore + Web of Science",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

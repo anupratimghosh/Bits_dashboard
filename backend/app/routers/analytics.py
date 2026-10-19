@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from ..config import CURRENT_METRIC_YEAR
 from ..db import q
 from ..deps import filter_params
-from ..filters import BASE_FROM, PubFilters
+from ..filters import BASE_FROM, FY_SQL, PubFilters, fy_label
 
 router = APIRouter(prefix="/api", tags=["analytics"])
 
@@ -64,6 +64,17 @@ def filter_options():
                 "AND document_type IS NOT NULL GROUP BY document_type ORDER BY n DESC"
             )
         ],
+        # financial years that have at least one dated paper, newest first
+        "financial_years": [
+            {"fy": r["fy"], "label": fy_label(r["fy"])}
+            for r in q(
+                f"SELECT DISTINCT {FY_SQL} AS fy FROM publication p "
+                "WHERE p.is_bits = 1 AND p.pub_date IS NOT NULL ORDER BY fy DESC"
+            )
+        ],
+        "undated_publications": q(
+            "SELECT COUNT(*) AS n FROM publication WHERE is_bits = 1 AND pub_date IS NULL"
+        )[0]["n"],
         "quartiles": ["Q1", "Q2", "Q3", "Q4", "Unranked"],
         # the vintage the API actually computes on when the caller sends none --
         # the newest loaded vintage is not necessarily it
@@ -113,7 +124,18 @@ def overview(f: PubFilters = Depends(filter_params)):
         **params,
     )[0]
 
-    out = {**row, **people}
+    # Institution h-index over the whole filtered corpus -- unattributed papers
+    # included, like every institute-level number. Computed on the papers held
+    # here, not BITS's lifetime Scopus record.
+    hidx = q(
+        f"""SELECT COALESCE(SUM(t.cited_by >= t.rn), 0) AS h_index,
+                   COALESCE(SUM(t.cited_by >= 10), 0) AS i10_index
+            FROM (SELECT p.cited_by, ROW_NUMBER() OVER (ORDER BY p.cited_by DESC) AS rn
+                  {BASE_FROM} WHERE {where}) t""",
+        **params,
+    )[0]
+
+    out = {**row, **people, **hidx}
     prev = out["publications_last_year"] or 0
     cur = out["publications_this_year"] or 0
     out["yoy_growth_pct"] = round((cur - prev) / prev * 100, 1) if prev else None
@@ -272,8 +294,24 @@ def _group_by_author_dim(f: PubFilters, dim_table, dim_col):
             **params,
         )
     }
+    # h-index per dimension, over the same distinct (dimension, paper) pairs --
+    # so a cross-campus paper counts toward each campus's h-index too
+    h = {
+        r["dim_id"]: r["h_index"]
+        for r in q(
+            f"""SELECT t.dim_id, SUM(t.cited_by >= t.rn) AS h_index
+                FROM (SELECT dp.dim_id, p.cited_by,
+                             ROW_NUMBER() OVER (PARTITION BY dp.dim_id
+                                                ORDER BY p.cited_by DESC) AS rn
+                      FROM ({dedup}) dp
+                      JOIN publication p ON p.id = dp.pub_id) t
+                GROUP BY t.dim_id""",
+            **params,
+        )
+    }
     for r in rows:
         r["faculty"] = faculty.get(r["id"], 0)
+        r["h_index"] = h.get(r["id"], 0)
     return rows
 
 
