@@ -6,7 +6,7 @@ import { dec, growthLabel, num } from '../format'
 import { useApiAll, useFilters } from '../useData'
 
 export default function Overview() {
-  const { filters, setFilter, reset } = useFilters()
+  const { filters, setFilter } = useFilters()
   const { data, error, loading } = useApiAll({
     kpi: '/overview',
     byYear: '/analytics/by-year',
@@ -32,7 +32,7 @@ export default function Overview() {
         </p>
       </div>
 
-      <FilterBar filters={filters} setFilter={setFilter} reset={reset} />
+      <FilterBar filters={filters} setFilter={setFilter} />
       <ErrorBox error={error} />
       {loading && !k && <Spinner />}
 

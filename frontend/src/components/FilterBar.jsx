@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { FY_QUARTERS } from '../format'
 import { useApi } from '../useData'
 
+const SEARCH_DELAY_MS = 350
+
 /** One filter row above the charts. Every control writes to the URL, so the
  *  whole dashboard -- KPIs, charts and tables -- moves together. */
-export default function FilterBar({ filters, setFilter, reset, show = {} }) {
+export default function FilterBar({ filters, setFilter, show = {} }) {
   const { data: opts } = useApi('/filters')
-  // Controlled, so Clear (and any URL change) actually empties the box. The
+  // Controlled, so any URL change (back/forward, a link) updates the box. The
   // reset is done during render rather than in an effect -- an effect would
   // repaint the stale value first and cost an extra render pass.
   const urlSearch = filters.search || ''
@@ -17,6 +19,21 @@ export default function FilterBar({ filters, setFilter, reset, show = {} }) {
     setSyncedTo(urlSearch)
     setTerm(urlSearch)
   }
+
+  // Search as you type, once typing pauses. syncedTo is set to what we send,
+  // so when the URL catches up the block above does not overwrite letters
+  // typed in the meantime; other URL changes still reset the box.
+  const commitSearch = (value) => {
+    if (value === urlSearch) return
+    setSyncedTo(value)
+    setFilter({ search: value })
+  }
+  useEffect(() => {
+    if (term === urlSearch) return undefined
+    const t = setTimeout(() => commitSearch(term), SEARCH_DELAY_MS)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [term, urlSearch])
   const cfg = {
     year: true, quarter: true, campus: true, department: true, quartile: true,
     docType: true, search: true, metricYear: true, ...show,
@@ -29,8 +46,6 @@ export default function FilterBar({ filters, setFilter, reset, show = {} }) {
         .filter((d) => String(d.campus_id) === String(filters.campus_id))
         .map((d) => ({ id: d.department_id, name: d.name }))
     : opts.departments
-
-  const active = Object.keys(filters).length > 0
 
   return (
     <div className="filterbar">
@@ -147,13 +162,11 @@ export default function FilterBar({ filters, setFilter, reset, show = {} }) {
             placeholder="e.g. supercapacitor"
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') setFilter({ search: term }) }}
-            onBlur={() => { if (term !== (filters.search || '')) setFilter({ search: term }) }}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitSearch(term) }}
           />
         </div>
       )}
 
-      <button className="btn" onClick={reset} disabled={!active}>Clear</button>
     </div>
   )
 }

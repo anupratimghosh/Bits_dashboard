@@ -17,7 +17,7 @@ const COLUMNS = [
 ]
 
 export default function Publications() {
-  const { filters, setFilter, reset } = useFilters()
+  const { filters, setFilter } = useFilters()
   const [params, setParams] = useSearchParams()
   const sort = params.get('sort') || 'year'
   const order = params.get('order') || 'desc'
@@ -49,7 +49,7 @@ export default function Publications() {
         </p>
       </div>
 
-      <FilterBar filters={filters} setFilter={setFilter} reset={reset} />
+      <FilterBar filters={filters} setFilter={setFilter} />
 
       <div className="row" style={{ marginBottom: 12 }}>
         <button

@@ -17,7 +17,7 @@ const MEASURES = [
 ]
 
 export default function Campuses() {
-  const { filters, setFilter, reset } = useFilters()
+  const { filters, setFilter } = useFilters()
   const { data, error, loading } = useApiAll({
     campuses: '/analytics/by-campus',
     years: '/analytics/by-year',
@@ -36,7 +36,7 @@ export default function Campuses() {
         </p>
       </div>
 
-      <FilterBar filters={filters} setFilter={setFilter} reset={reset} show={{ campus: false, department: false }} />
+      <FilterBar filters={filters} setFilter={setFilter} show={{ campus: false, department: false }} />
       <ErrorBox error={error} />
       {loading && !campuses.length && <Spinner />}
 

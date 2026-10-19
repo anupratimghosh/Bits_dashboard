@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, ErrorBox, Spinner, Pager } from '../components/UI'
 import { num } from '../format'
@@ -17,6 +17,13 @@ function Resolver({ item, onDone }) {
   const results = useApi('/faculty', {
     name: query, publishing_only: false, page_size: 8,
   }, query.length >= 2)
+
+  // search as you type, once typing pauses -- same delay as the other search boxes
+  useEffect(() => {
+    if (term === query) return undefined
+    const t = setTimeout(() => setQuery(term), 350)
+    return () => clearTimeout(t)
+  }, [term, query])
 
   const resolve = async (facultyId) => {
     setBusy(true); setError(null)
@@ -42,7 +49,6 @@ function Resolver({ item, onDone }) {
           onKeyDown={(e) => { if (e.key === 'Enter') setQuery(e.target.value) }}
           style={{ minWidth: 240 }}
         />
-        <button className="btn" onClick={() => setQuery(term)} disabled={busy}>Search</button>
         <button className="btn" onClick={ignore} disabled={busy}>Not a faculty member</button>
       </div>
       <ErrorBox error={error} />

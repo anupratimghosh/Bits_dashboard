@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { QuartileBar, QuartileStack, RankedBars, TimeBars } from '../components/Charts'
-import { BarCell, Card, ErrorBox, Spinner, Stat, Th } from '../components/UI'
+import { BarCell, Card, ErrorBox, Pager, Quartile, Spinner, Stat, Th } from '../components/UI'
 import { dec, num } from '../format'
 import { useApi, useApiAll, useFilters } from '../useData'
 
@@ -22,8 +22,76 @@ const COLUMNS = [
   { key: 'avg_impact_factor', label: 'Avg JIF', num: true, digits: 3 },
 ]
 
+const PUB_COLUMNS = [
+  { key: 'year', label: 'Year', num: true },
+  { key: 'title', label: 'Title' },
+  { key: 'journal', label: 'Journal / source' },
+  { key: 'quartile', label: 'Quartile' },
+  { key: 'impact_factor', label: 'JIF', num: true },
+  { key: 'cited_by', label: 'Cited by', num: true },
+]
+
+/** Every publication of the selected department, under the same filters as the
+ *  rest of the page. Sorted and paged server-side by the /publications API. */
+function DepartmentPublications({ filters, search, name }) {
+  const [sort, setSort] = useState('year')
+  const [order, setOrder] = useState('desc')
+  const [page, setPage] = useState(1)
+  const { data, error, loading } = useApi('/publications', {
+    ...filters, sort, order, page, page_size: 15,
+  })
+
+  const onSort = (field) => {
+    if (field === sort) setOrder(order === 'asc' ? 'desc' : 'asc')
+    else { setSort(field); setOrder(['title', 'journal', 'quartile'].includes(field) ? 'asc' : 'desc') }
+    setPage(1)
+  }
+
+  return (
+    <Card
+      title={data ? `${num(data.total)} publications in ${name}` : `Publications in ${name}`}
+      note={<Link to={`/publications?${search}`} style={{ color: 'var(--series-1)' }}>Open in Publications →</Link>}
+    >
+      <ErrorBox error={error} />
+      {loading && !data && <Spinner />}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {PUB_COLUMNS.map((c) => (
+                <Th key={c.key} field={c.key} sort={sort} order={order} onSort={onSort} num={c.num}>
+                  {c.label}
+                </Th>
+              ))}
+              <th>BITS authors</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.items || []).map((p) => (
+              <tr key={p.id}>
+                <td className="num">{p.year}</td>
+                <td className="t-wide">
+                  <Link to={`/publications/${p.id}`} className="t-title">{p.title}</Link>
+                  {p.is_open_access ? <span className="chip chip-oa" style={{ marginLeft: 6 }}>OA</span> : null}
+                </td>
+                <td className="t-med">{p.journal}</td>
+                <td><Quartile value={p.quartile} /></td>
+                <td className="num">{p.impact_factor === null ? <span className="muted">--</span> : dec(p.impact_factor, 2)}</td>
+                <td className="num">{num(p.cited_by)}</td>
+                <td className="t-narrow">{p.bits_authors || <span className="muted">not attributed</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data && data.items.length === 0 && <div className="empty">No publications match these filters</div>}
+      {data && <Pager page={data.page} pageSize={data.page_size} total={data.total} onPage={setPage} />}
+    </Card>
+  )
+}
+
 export default function Departments() {
-  const { filters, setFilter, reset } = useFilters()
+  const { filters, setFilter, search } = useFilters()
   const [sort, setSort] = useState('publications')
   const [order, setOrder] = useState('desc')
 
@@ -72,7 +140,7 @@ export default function Departments() {
         </p>
       </div>
 
-      <FilterBar filters={filters} setFilter={setFilter} reset={reset} />
+      <FilterBar filters={filters} setFilter={setFilter} />
       <ErrorBox error={error} />
       {loading && !rows.length && <Spinner />}
 
@@ -134,6 +202,12 @@ export default function Departments() {
               <RankedBars data={subjects.data} labelKey="subject" valueKey="publications" name="Publications" />
             </Card>
           </div>
+
+          {/* keyed on the filters so sorting and paging start over when they change */}
+          <DepartmentPublications
+            key={JSON.stringify(filters)} filters={filters} search={search}
+            name={d.department.name}
+          />
         </div>
       )}
 

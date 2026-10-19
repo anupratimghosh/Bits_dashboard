@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { Card, ErrorBox, Pager, Spinner, Th } from '../components/UI'
@@ -18,7 +18,7 @@ const COLUMNS = [
 ]
 
 export default function FacultyList() {
-  const { filters, setFilter, reset } = useFilters()
+  const { filters, setFilter } = useFilters()
   const [params, setParams] = useSearchParams()
   const [sort, setSort] = useState('publications')
   const [order, setOrder] = useState('desc')
@@ -47,6 +47,15 @@ export default function FacultyList() {
     next.delete('page')
     setParams(next, { replace: true })
   }
+  // search as you type, once typing pauses -- same delay as the main search box
+  const urlName = params.get('name') || ''
+  useEffect(() => {
+    if (name === urlName) return undefined
+    const t = setTimeout(() => submitName(name), 350)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, urlName])
+
   const toggleAll = () => {
     const next = new URLSearchParams(params)
     if (publishingOnly) next.set('all', '1'); else next.delete('all')
@@ -64,18 +73,17 @@ export default function FacultyList() {
         </p>
       </div>
 
-      <FilterBar filters={filters} setFilter={setFilter} reset={reset} show={{ search: false }} />
+      <FilterBar filters={filters} setFilter={setFilter} show={{ search: false }} />
 
       <div className="filterbar">
         <div className="field" style={{ flex: 1, minWidth: 240 }}>
           <label htmlFor="fac-name">Faculty name</label>
           <input
             id="fac-name" type="search" style={{ width: '100%' }}
-            placeholder="Start typing a name, then press Enter"
+            placeholder="Start typing a name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submitName(e.target.value) }}
-            onBlur={(e) => submitName(e.target.value)}
           />
         </div>
         <button className="btn" onClick={toggleAll}>
