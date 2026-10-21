@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { saveCsv } from '../download'
 import { dec, num } from '../format'
 
 export function Stat({ label, value, meta, delta }) {
@@ -17,13 +18,18 @@ export function Stat({ label, value, meta, delta }) {
   )
 }
 
-export function Card({ title, note, children, className = '' }) {
+export function Card({ title, note, action, children, className = '' }) {
   return (
     <div className={`card ${className}`}>
-      {(title || note) && (
+      {(title || note || action) && (
         <div className="card-head">
           <h3 className="card-title">{title}</h3>
-          {note && <span className="card-note">{note}</span>}
+          {(note || action) && (
+            <div className="card-head-side">
+              {note && <span className="card-note">{note}</span>}
+              {action}
+            </div>
+          )}
         </div>
       )}
       {children}
@@ -62,6 +68,32 @@ export function Quartile({ value }) {
       <span className="chip-dot" />
       {v === 'Unranked' ? '--' : v}
     </span>
+  )
+}
+
+/** Saves a table as CSV. `rows` is an array, or an async function for lists
+ *  that have to be fetched in full first (the table on screen is one page). */
+export function DownloadButton({ name, rows, columns, label = 'Download CSV' }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const run = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      saveCsv(name, typeof rows === 'function' ? await rows() : rows, columns)
+    } catch (e) {
+      setError(e)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button
+      className="btn btn-sm" onClick={run} disabled={busy || (Array.isArray(rows) && !rows.length)}
+      title={error ? `Download failed: ${error.message || error}` : 'Download this table as a CSV file (opens in Excel)'}
+    >
+      {busy ? 'Preparing…' : error ? 'Retry download' : `⤓ ${label}`}
+    </button>
   )
 }
 

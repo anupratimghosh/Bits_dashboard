@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { QuartileBar, RankedBars, TimeBars } from '../components/Charts'
-import { Card, ErrorBox, FieldGrid, Quartile, Spinner, Stat, Th } from '../components/UI'
+import { Card, DownloadButton, ErrorBox, FieldGrid, Quartile, Spinner, Stat, Th } from '../components/UI'
 import { dec, FY_QUARTERS, growthLabel, num } from '../format'
 import { useApi } from '../useData'
 
@@ -102,6 +102,13 @@ export default function FacultyDetail() {
     ? fyRow.quarters.map((r) => ({ ...r, label: FY_QUARTERS[r.quarter - 1].label }))
     : []
 
+  // file names carry the professor's name, so several downloads stay apart
+  const slug = `${f.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+  // every financial year in one file, one row per quarter -- the chart shows one year at a time
+  const quarterRows = data.by_quarter.flatMap((r) => r.quarters.map((qr) => ({
+    fy: `FY ${r.label}`, quarter: FY_QUARTERS[qr.quarter - 1].label, ...qr,
+  })))
+
   const quartileCounts = Object.fromEntries(data.quartiles.map((q) => [q.quartile, q.publications]))
 
   return (
@@ -166,7 +173,19 @@ export default function FacultyDetail() {
         </div>
 
         <div className="grid cols-2">
-          <Card title="Year-on-year publications" note="change against the previous year">
+          <Card
+            title="Year-on-year publications" note="change against the previous year"
+            action={
+              <DownloadButton
+                name={`${slug}-year-on-year`} rows={data.by_year}
+                columns={[
+                  { key: 'year', label: 'Year' }, { key: 'publications', label: 'Publications' },
+                  { key: 'change', label: 'Change' }, { key: 'growth_pct', label: 'Growth %' },
+                  { key: 'citations', label: 'Citations' }, { key: 'q1', label: 'Q1' },
+                ]}
+              />
+            }
+          >
             {data.by_year.length ? (
               <div className="table-wrap">
                 <table>
@@ -201,7 +220,18 @@ export default function FacultyDetail() {
             ) : <div className="empty">No dated publications</div>}
           </Card>
 
-          <Card title="Quarter-wise publications" note="Indian financial year · Q1 = Apr–Jun">
+          <Card
+            title="Quarter-wise publications" note="Indian financial year · Q1 = Apr–Jun"
+            action={
+              <DownloadButton
+                name={`${slug}-quarterly`} rows={quarterRows} label="All years CSV"
+                columns={[
+                  { key: 'fy', label: 'Financial year' }, { key: 'quarter', label: 'Quarter' },
+                  { key: 'publications', label: 'Publications' }, { key: 'citations', label: 'Citations' },
+                ]}
+              />
+            }
+          >
             {fyRow ? (
               <>
                 <div className="field" style={{ marginBottom: 12, maxWidth: 220 }}>
@@ -267,7 +297,19 @@ export default function FacultyDetail() {
           </Card>
         </div>
 
-        <Card title={`Publication list — ${num(data.publications.length)} records`} note="every column sortable">
+        <Card
+          title={`Publication list — ${num(data.publications.length)} records`} note="every column sortable"
+          action={
+            <DownloadButton
+              name={`${slug}-publications`}
+              rows={sorted.map((p) => ({ ...p, is_open_access: p.is_open_access ? 'Yes' : 'No' }))}
+              columns={[
+                ...COLUMNS.map(({ key, label }) => ({ key, label })),
+                { key: 'is_open_access', label: 'Open access' }, { key: 'doi', label: 'DOI' },
+              ]}
+            />
+          }
+        >
           <div className="table-wrap">
             <table>
               <thead>

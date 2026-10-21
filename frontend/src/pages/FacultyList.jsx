@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
-import { Card, ErrorBox, Pager, Spinner, Th } from '../components/UI'
+import { Card, DownloadButton, ErrorBox, Pager, Spinner, Th } from '../components/UI'
+import { fetchAll } from '../download'
 import { dec, num } from '../format'
 import { useApi, useFilters } from '../useData'
 
@@ -15,6 +16,21 @@ const COLUMNS = [
   { key: 'q1', label: 'Q1', num: true },
   { key: 'avg_citescore', label: 'Avg CiteScore', num: true, digits: 2 },
   { key: 'avg_impact_factor', label: 'Avg JIF', num: true, digits: 3 },
+]
+
+const CSV_COLUMNS = [
+  { key: 'name', label: 'Faculty' },
+  { key: 'designation', label: 'Designation' },
+  { key: 'campus', label: 'Campus' },
+  { key: 'department', label: 'Department' },
+  { key: 'publications', label: 'Publications' },
+  { key: 'citations', label: 'Citations' },
+  { key: 'h_index', label: 'h-index' },
+  { key: 'q1', label: 'Q1' },
+  { key: 'q2', label: 'Q2' },
+  { key: 'avg_citescore', label: 'Avg CiteScore' },
+  { key: 'avg_impact_factor', label: 'Avg JIF' },
+  { key: 'scopus_author_id', label: 'Scopus author ID' },
 ]
 
 export default function FacultyList() {
@@ -96,6 +112,14 @@ export default function FacultyList() {
       <Card
         title={data ? `${num(data.total)} faculty` : 'Faculty'}
         note={publishingOnly ? 'with publications matching the current filter' : 'entire IRINS roster'}
+        action={data?.total ? (
+          <DownloadButton
+            name="bits-faculty" columns={CSV_COLUMNS}
+            rows={() => fetchAll('/faculty', {
+              ...filters, name: params.get('name') || '', sort, order, publishing_only: publishingOnly,
+            }, 200)}
+          />
+        ) : null}
       >
         {loading && !data && <Spinner />}
         <div className="table-wrap">

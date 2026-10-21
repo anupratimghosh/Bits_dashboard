@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { QuartileBar, RankedBars } from '../components/Charts'
-import { Card, ErrorBox, Spinner } from '../components/UI'
+import { Card, DownloadButton, ErrorBox, Spinner } from '../components/UI'
 import { dec, num } from '../format'
 import { useApiAll, useFilters } from '../useData'
 
@@ -54,7 +54,21 @@ export default function Campuses() {
             </Card>
           </div>
 
-          <Card title="Every measure, by campus" note="click a campus to drill into its departments">
+          <Card
+            title="Every measure, by campus" note="click a campus to drill into its departments"
+            action={
+              <DownloadButton
+                name="bits-campuses" rows={campuses}
+                columns={[
+                  { key: 'name', label: 'Campus' },
+                  ...MEASURES,
+                  { key: 'q2', label: 'Q2' }, { key: 'q3', label: 'Q3' }, { key: 'q4', label: 'Q4' },
+                  { key: 'faculty', label: 'Faculty' },
+                  { key: 'open_access', label: 'Open access' },
+                ]}
+              />
+            }
+          >
             <div className="table-wrap">
               <table>
                 <thead>

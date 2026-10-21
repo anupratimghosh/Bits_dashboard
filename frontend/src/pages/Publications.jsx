@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
-import { Card, ErrorBox, Pager, Quartile, Spinner, Th } from '../components/UI'
+import { Card, DownloadButton, ErrorBox, Pager, Quartile, Spinner, Th } from '../components/UI'
+import { fetchAll } from '../download'
 import { dec, num } from '../format'
 import { useApi, useFilters } from '../useData'
 
@@ -14,6 +15,27 @@ const COLUMNS = [
   { key: 'sjr', label: 'SJR', num: true },
   { key: 'impact_factor', label: 'JIF', num: true },
   { key: 'cited_by', label: 'Cited by', num: true },
+]
+
+// the CSV carries every field the list API returns, not just the visible columns
+const CSV_COLUMNS = [
+  { key: 'year', label: 'Year' },
+  { key: 'title', label: 'Title' },
+  { key: 'journal', label: 'Journal / source' },
+  { key: 'document_type', label: 'Document type' },
+  { key: 'quartile', label: 'SJR quartile' },
+  { key: 'citescore', label: 'CiteScore' },
+  { key: 'sjr', label: 'SJR' },
+  { key: 'snip', label: 'SNIP' },
+  { key: 'impact_factor', label: 'JIF' },
+  { key: 'cited_by', label: 'Cited by' },
+  { key: 'is_open_access', label: 'Open access' },
+  { key: 'bits_authors', label: 'BITS authors' },
+  { key: 'campuses', label: 'Campuses' },
+  { key: 'departments', label: 'Departments' },
+  { key: 'doi', label: 'DOI' },
+  { key: 'eid', label: 'Scopus EID' },
+  { key: 'link', label: 'Scopus link' },
 ]
 
 export default function Publications() {
@@ -74,7 +96,16 @@ export default function Publications() {
 
       <ErrorBox error={error} />
 
-      <Card title={data ? `${num(data.total)} publications` : 'Publications'}>
+      <Card
+        title={data ? `${num(data.total)} publications` : 'Publications'}
+        action={data?.total ? (
+          <DownloadButton
+            name="bits-publications" columns={CSV_COLUMNS}
+            rows={async () => (await fetchAll('/publications', { ...filters, sort, order }, 500))
+              .map((p) => ({ ...p, is_open_access: p.is_open_access ? 'Yes' : 'No' }))}
+          />
+        ) : null}
+      >
         {loading && !data && <Spinner />}
         <div className="table-wrap">
           <table>

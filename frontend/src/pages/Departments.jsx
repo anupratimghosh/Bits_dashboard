@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { QuartileBar, QuartileStack, RankedBars, TimeBars } from '../components/Charts'
-import { BarCell, Card, ErrorBox, Pager, Quartile, Spinner, Stat, Th } from '../components/UI'
+import { BarCell, Card, DownloadButton, ErrorBox, Pager, Quartile, Spinner, Stat, Th } from '../components/UI'
+import { fetchAll } from '../download'
 import { dec, num } from '../format'
 import { useApi, useApiAll, useFilters } from '../useData'
 
@@ -51,6 +52,15 @@ function DepartmentPublications({ filters, search, name }) {
     <Card
       title={data ? `${num(data.total)} publications in ${name}` : `Publications in ${name}`}
       note={<Link to={`/publications?${search}`} style={{ color: 'var(--series-1)' }}>Open in Publications →</Link>}
+      action={data?.total ? (
+        <DownloadButton
+          name={`bits-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-publications`}
+          columns={[...PUB_COLUMNS.slice(0, 3), { key: 'document_type', label: 'Type' },
+            ...PUB_COLUMNS.slice(3), { key: 'bits_authors', label: 'BITS authors' },
+            { key: 'campuses', label: 'Campuses' }, { key: 'doi', label: 'DOI' }]}
+          rows={() => fetchAll('/publications', { ...filters, sort, order }, 500)}
+        />
+      ) : null}
     >
       <ErrorBox error={error} />
       {loading && !data && <Spinner />}
@@ -214,6 +224,12 @@ export default function Departments() {
       <Card
         title={filters.campus_id ? 'Departments on this campus' : 'All departments'}
         note="click a row to drill in"
+        action={
+          <DownloadButton
+            name="bits-departments" rows={rows}
+            columns={[...COLUMNS, { key: 'open_access', label: 'Open access' }]}
+          />
+        }
       >
         <div className="table-wrap">
           <table>
