@@ -89,14 +89,45 @@ def _author_rows(row):
     return out
 
 
+def _clear_matched_ignores(conn):
+    """An author ruled 'not a faculty member' who now matches a professor (added
+    to IRINS later, or a manual match) was a faculty member after all: drop the
+    ruling and close their queue rows, so the Ignored list shows only authors
+    who are still unmatched."""
+    conn.execute(
+        text(
+            "DELETE ai FROM author_ignored ai "
+            "JOIN publication_author pa ON pa.scopus_author_id = ai.scopus_author_id "
+            "WHERE pa.faculty_id IS NOT NULL"
+        )
+    )
+    conn.execute(
+        text(
+            "UPDATE unmatched_author ua "
+            "JOIN publication_author pa ON pa.id = ua.publication_author_id "
+            "SET ua.status = 'resolved', ua.resolved_faculty_id = pa.faculty_id, "
+            "    ua.resolved_at = NOW() "
+            "WHERE pa.faculty_id IS NOT NULL AND ua.status = 'ignored'"
+        )
+    )
+
+
 def _load_faculty_index(conn):
     """scopus_author_id -> (faculty_id, campus_id, department_id), including
-    manual overrides created from the review queue."""
+    every extra ID IRINS lists and manual overrides from the review queue."""
     idx = {}
     for r in conn.execute(
         text(
             "SELECT scopus_author_id, id, campus_id, department_id FROM faculty "
             "WHERE scopus_author_id IS NOT NULL"
+        )
+    ):
+        idx[r[0]] = (r[1], r[2], r[3])
+    # further IDs IRINS lists for the same professor
+    for r in conn.execute(
+        text(
+            "SELECT x.scopus_author_id, f.id, f.campus_id, f.department_id "
+            "FROM faculty_scopus_id x JOIN faculty f ON f.id = x.faculty_id"
         )
     ):
         idx[r[0]] = (r[1], r[2], r[3])
@@ -289,6 +320,7 @@ def ingest_scopus(path, filename=None, uploaded_by=None, snapshot=None):
             {"n": stats["new"], "u": stats["updated"], "m": stats["unmatched"],
              "b": batch_id},
         )
+        _clear_matched_ignores(conn)
 
     stats["batch_id"] = batch_id
     return stats
@@ -395,6 +427,7 @@ def resync_faculty():
                 )
             )
 
+        _clear_matched_ignores(conn)
         stats["publications_touched"] = len(changed_pubs)
 
     return stats

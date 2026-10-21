@@ -224,6 +224,15 @@ CREATE TABLE IF NOT EXISTS author_ignored (
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+-- A professor's further Scopus Author IDs, when IRINS lists several in one cell
+-- (Scopus sometimes splits one person across profiles). faculty.scopus_author_id
+-- holds the first; matching treats every ID here exactly like it.
+CREATE TABLE IF NOT EXISTS faculty_scopus_id (
+  scopus_author_id VARCHAR(32) NOT NULL PRIMARY KEY,
+  faculty_id       INT NOT NULL,
+  CONSTRAINT fk_fsid_fac FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- manual Scopus-ID -> faculty overrides created from the review queue
 CREATE TABLE IF NOT EXISTS author_alias (
   scopus_author_id VARCHAR(32) NOT NULL PRIMARY KEY,

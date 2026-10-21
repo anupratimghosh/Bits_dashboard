@@ -101,6 +101,32 @@ def split_issns(v):
     return out
 
 
+def split_scopus_ids(v):
+    """Scopus Author IDs from one master cell -> (ids, rejected).
+
+    pandas types an all-numeric column that has a blank cell as float64, so
+    60123665900 arrives as 60123665900.0 and, kept as text, would never match a
+    paper. IRINS also packs several IDs into one cell for an author Scopus has
+    split: '56094610300;60580463600'. Anything that is not all digits (a
+    spreadsheet's 6.01E+10, a stray name) is returned as rejected, not guessed."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return [], []
+    if isinstance(v, (int, float)) or hasattr(v, "is_integer"):
+        f = float(v)
+        return ([str(int(f))], []) if f.is_integer() and f > 0 else ([], [str(v)])
+    ids, bad = [], []
+    for part in re.split(r"[;,|/\s]+", str(v).strip()):
+        part = re.sub(r"\.0+$", "", part)
+        if not part:
+            continue
+        if part.isdigit():
+            if part not in ids:
+                ids.append(part)
+        else:
+            bad.append(part)
+    return ids, bad
+
+
 def norm_quartile(v):
     s = clean_str(v)
     if s is None:

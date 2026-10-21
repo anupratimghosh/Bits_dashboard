@@ -11,6 +11,17 @@ const MASTERS = [
   { kind: 'wos', label: 'Web of Science master', hint: 'Journal Impact Factor, JIF quartile, index type' },
 ]
 
+// problems the IRINS loader reports instead of loading silently
+const IRINS_WARNINGS = [
+  { key: 'skipped_no_expert_id', label: 'Not loaded — no Expert_ID (it is how a professor is recognised on the next upload):' },
+  { key: 'skipped_unknown_campus', label: 'Not loaded — campus is not Pilani, Goa, Hyderabad or Dubai:' },
+  { key: 'skipped_duplicate_expert_id', label: 'Not loaded — Expert_ID appears twice in the sheet (the first row was used):' },
+  { key: 'scopus_ids_moved', label: 'Scopus ID moved to a different professor — their publications moved with it. Check this is not a typo:' },
+  { key: 'duplicate_scopus_ids', label: 'Same Scopus ID on two rows of the sheet:' },
+  { key: 'unreadable_scopus_ids', label: 'Scopus ID not readable (must be digits only) — ignored:' },
+  { key: 'new_departments', label: 'New department names created — check for spelling variants of an existing one:' },
+]
+
 export default function Upload() {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
@@ -119,9 +130,24 @@ export default function Upload() {
           {target === 'masters' && <ErrorBox error={error} />}
           {target === 'masters' && result && (
             <div className="note" style={{ marginTop: 10, borderColor: 'var(--good)' }}>
-              ✓ {result.resync
-                ? `Loaded, and re-matched ${num(result.resync.authors_checked)} author records (${num(result.resync.authors_relinked)} relinked).`
-                : 'Loaded.'}
+              ✓ {result.kind === 'irins'
+                ? `${num(result.faculty_rows)} faculty loaded — ${num(result.added)} added, ${num(result.updated)} updated. `
+                : 'Loaded. '}
+              {result.resync &&
+                `Re-matched ${num(result.resync.authors_checked)} author records (${num(result.resync.authors_relinked)} relinked).`}
+            </div>
+          )}
+          {target === 'masters' && result && IRINS_WARNINGS.some((w) => result[w.key]) && (
+            <div className="note" style={{ marginTop: 10, borderColor: 'var(--warning)' }}>
+              <strong>Check these rows in the sheet:</strong>
+              {IRINS_WARNINGS.filter((w) => result[w.key]).map((w) => (
+                <div key={w.key} style={{ marginTop: 6 }}>
+                  {w.label}
+                  <ul style={{ margin: '4px 0 0 18px' }}>
+                    {result[w.key].map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+              ))}
             </div>
           )}
           <div className="note" style={{ marginTop: 10 }}>

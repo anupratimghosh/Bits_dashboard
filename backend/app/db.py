@@ -45,10 +45,20 @@ _ADDED_COLUMNS = [
     ("publication", "date_checked_at", "DATETIME NULL AFTER pub_date_source"),
 ]
 _ADDED_INDEXES = [("publication", "ix_pub_date", "(pub_date)")]
+# tables added after the first release, for the same reason
+_ADDED_TABLES = [
+    """CREATE TABLE IF NOT EXISTS faculty_scopus_id (
+         scopus_author_id VARCHAR(32) NOT NULL PRIMARY KEY,
+         faculty_id       INT NOT NULL,
+         CONSTRAINT fk_fsid_fac FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE CASCADE
+       ) ENGINE=InnoDB""",
+]
 
 
 def ensure_schema():
     with engine.begin() as conn:
+        for ddl in _ADDED_TABLES:
+            conn.execute(text(ddl))
         for table, col, ddl in _ADDED_COLUMNS:
             exists = conn.execute(
                 text(

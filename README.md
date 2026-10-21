@@ -396,9 +396,22 @@ So:
 - **A professor is added to IRINS** → their publications are attributed
   immediately and they leave the attribution review queue. No Scopus re-upload.
 - **A Scopus Author ID is reassigned** to a different person → handled; the ID is
-  released from its previous owner before the new mapping is written.
-- **A professor is removed from IRINS** → their publications return to the review
-  queue rather than vanishing.
+  released from its previous owner before the new mapping is written, and the
+  upload result lists every ID that moved, so a typo is caught straight away.
+- **A professor leaves BITS** → nothing is deleted. A professor missing from the
+  sheet keeps their row and their publications, which they wrote while at BITS.
+  This is what lets a sheet of only the new joiners be uploaded safely.
+- **Full roster or only the new joiners** → both work. Rows are upserted on
+  Expert_ID, and only the columns present in the sheet are written, so a short
+  sheet cannot blank out data it does not carry.
+- **Rows that cannot be loaded safely are skipped and named** in the upload
+  result: no Expert_ID, a campus that is not one of the four, an Expert_ID
+  repeated in the sheet. Campus names are normalised ("BITS Pilani, Hyderabad
+  Campus" → Hyderabad). New department names are listed so a spelling variant
+  of an existing department is noticed.
+- **Scopus IDs typed as numbers** (`60123665900.0` once Excel has touched them)
+  are cleaned, and a cell holding several IDs (`56094610300;60580463600`) gives
+  that professor every one of them.
 - **Entries dismissed as "Not a faculty member"** stay dismissed — across a
   re-sync *and* across the weekly Scopus upload. The ruling is recorded in
   `author_ignored` against the Scopus Author ID, the same way a match is

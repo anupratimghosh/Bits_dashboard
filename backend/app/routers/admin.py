@@ -144,6 +144,18 @@ def list_batches(limit: int = Query(25)):
 
 # ------------------------------------------------------------- review queue
 
+_QUEUE_FROM = """
+    FROM unmatched_author ua
+    JOIN publication p ON p.id = ua.publication_id
+    LEFT JOIN campus c ON c.id = ua.guessed_campus_id
+    LEFT JOIN author_ignored ai ON ai.scopus_author_id = ua.scopus_author_id
+    LEFT JOIN author_alias al ON al.scopus_author_id = ua.scopus_author_id
+    LEFT JOIN faculty mf ON mf.id = COALESCE(al.faculty_id, ua.resolved_faculty_id)
+    LEFT JOIN campus mc ON mc.id = mf.campus_id
+    LEFT JOIN department md ON md.id = mf.department_id
+"""
+
+
 @router.get("/admin/unmatched")
 def unmatched(
     status: str = Query("open"),
@@ -160,8 +172,15 @@ def unmatched(
     already-attributed papers, most of whom are research scholars rather than
     faculty.
     """
-    where = ["ua.status = :status"]
-    params = {"status": status}
+    if status == "matched":
+        # manual matches made on this page -- the ones an admin may need to undo.
+        # Entries IRINS resolved on its own are excluded: there is nothing to undo.
+        where = ["ua.status = 'resolved'",
+                 "(al.scopus_author_id IS NOT NULL OR ua.scopus_author_id IS NULL)"]
+        params = {}
+    else:
+        where = ["ua.status = :status"]
+        params = {"status": status}
     if priority_only:
         where.append("p.faculty_matched = 0")
     if search:
@@ -173,18 +192,18 @@ def unmatched(
         f"""SELECT ua.id, ua.scopus_author_id, ua.raw_name, ua.raw_affiliation,
                    ua.status, c.name AS guessed_campus, ua.guessed_campus_id,
                    p.id AS publication_id, p.title, p.year, p.doi,
-                   p.faculty_matched
-            FROM unmatched_author ua
-            JOIN publication p ON p.id = ua.publication_id
-            LEFT JOIN campus c ON c.id = ua.guessed_campus_id
+                   p.faculty_matched, p.cited_by, ai.created_at AS ignored_at,
+                   mf.id AS matched_faculty_id, mf.name AS matched_faculty,
+                   mc.name AS matched_campus, md.name AS matched_department,
+                   COALESCE(al.created_at, ua.resolved_at) AS matched_at
+            {_QUEUE_FROM}
             WHERE {w}
-            ORDER BY p.year DESC, ua.id
+            ORDER BY {'matched_at DESC, ' if status == 'matched' else ''}p.year DESC, ua.id
             LIMIT :limit OFFSET :offset""",
         **params, limit=page_size, offset=(page - 1) * page_size,
     )
     total = q(
-        f"""SELECT COUNT(*) AS n FROM unmatched_author ua
-            JOIN publication p ON p.id = ua.publication_id WHERE {w}""",
+        f"SELECT COUNT(*) AS n {_QUEUE_FROM} WHERE {w}",
         **params,
     )[0]["n"]
     return {"total": total, "page": page, "page_size": page_size, "items": items}
@@ -328,6 +347,75 @@ def ignore_unmatched(item_id: int):
                 {"id": item_id},
             )
     return {"ignored": True}
+
+
+@router.post("/admin/unmatched/{item_id}/unmatch")
+def unmatch(item_id: int):
+    """Undo a wrong manual match. The alias is removed and matching is re-run, so
+    the author's papers go back to whoever IRINS says they belong to -- or, if
+    nobody, back into the open queue, on every paper with that Scopus ID."""
+    rows = q(
+        "SELECT id, scopus_author_id, publication_author_id, guessed_campus_id "
+        "FROM unmatched_author WHERE id = :id",
+        id=item_id,
+    )
+    if not rows:
+        raise HTTPException(404, "Queue item not found")
+    item = rows[0]
+    if item["scopus_author_id"]:
+        with engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM author_alias WHERE scopus_author_id = :s"),
+                {"s": item["scopus_author_id"]},
+            )
+        return {"unmatched": True, "resync": scopus.resync_faculty()}
+
+    # no Scopus ID: the match was made on this one author row only
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE publication_author SET faculty_id = NULL, department_id = NULL, "
+                 "campus_id = :c WHERE id = :pa"),
+            {"c": item["guessed_campus_id"], "pa": item["publication_author_id"]},
+        )
+        conn.execute(
+            text("UPDATE unmatched_author SET status = 'open', resolved_faculty_id = NULL, "
+                 "resolved_at = NULL WHERE id = :id"),
+            {"id": item_id},
+        )
+        conn.execute(
+            text("""UPDATE publication p SET p.faculty_matched = (
+                      SELECT COUNT(*) > 0 FROM publication_author pa
+                      WHERE pa.publication_id = p.id AND pa.faculty_id IS NOT NULL)
+                    WHERE p.id = (SELECT publication_id FROM publication_author WHERE id = :pa)"""),
+            {"pa": item["publication_author_id"]},
+        )
+    return {"unmatched": True}
+
+
+@router.post("/admin/unmatched/{item_id}/reopen")
+def reopen_unmatched(item_id: int):
+    """Undo 'not a faculty member': the author goes back into the open queue,
+    on every publication that carries their Scopus Author ID."""
+    rows = q(
+        "SELECT id, scopus_author_id FROM unmatched_author WHERE id = :id", id=item_id
+    )
+    if not rows:
+        raise HTTPException(404, "Queue item not found")
+    sid = rows[0]["scopus_author_id"]
+    with engine.begin() as conn:
+        if sid:
+            conn.execute(text("DELETE FROM author_ignored WHERE scopus_author_id = :s"), {"s": sid})
+            conn.execute(
+                text("UPDATE unmatched_author SET status = 'open' "
+                     "WHERE scopus_author_id = :s AND status = 'ignored'"),
+                {"s": sid},
+            )
+        else:
+            conn.execute(
+                text("UPDATE unmatched_author SET status = 'open' WHERE id = :id"),
+                {"id": item_id},
+            )
+    return {"reopened": True}
 
 
 @router.get("/admin/stats")

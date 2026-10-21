@@ -17,9 +17,11 @@ from sqlalchemy import text
 from ..db import engine
 from .normalize import (
     ColumnMap,
+    campus_from_affiliation,
     clean_str,
     norm_quartile,
     split_issns,
+    split_scopus_ids,
     to_float,
     to_int,
 )
@@ -173,25 +175,96 @@ _IRINS_SPEC = {
 # re-upload would insert a duplicate copy of the whole roster.
 _IRINS_REQUIRED = ["expert_id", "name", "scopus_id", "campus", "department"]
 
+# spec key -> (faculty column, insert parameter). Only the columns the uploaded
+# sheet actually has are overwritten on an existing professor, so a short sheet
+# of new joiners cannot blank out everyone else's email or ORCID.
+_IRINS_COLUMNS = {
+    "name": ("name", "name"),
+    "title": ("title", "title"),
+    "designation": ("designation", "desig"),
+    "email": ("email", "email"),
+    "campus": ("campus_id", "campus_id"),
+    "department": ("department_id", "dept_id"),
+    "orcid": ("orcid_id", "orcid"),
+    "researcher_id": ("researcher_id", "rid"),
+    "gscholar": ("google_scholar_id", "gs"),
+    "expertise": ("expertise", "exp"),
+    "qualification": ("qualification", "qual"),
+    "status": ("is_active", "active"),
+    "scopus_id": ("scopus_author_id", "sid"),
+}
+
+# upload result lists are cut to this many names; the counts stay exact
+_LIST_CAP = 20
+
+
+def _capped(items):
+    return items if len(items) <= _LIST_CAP else items[:_LIST_CAP] + [f"... and {len(items) - _LIST_CAP} more"]
+
 
 def load_irins(path, sheet=0):
-    """IRINS faculty master -> campus, department, faculty."""
+    """IRINS faculty master -> campus, department, faculty.
+
+    Works for the whole roster and for a sheet of just the new joiners alike:
+    rows are upserted on Expert_ID, professors absent from the sheet are left as
+    they are, and only the columns the sheet carries are written. Rows that
+    cannot be loaded safely are skipped and named in the result rather than
+    guessed at.
+    """
     df = pd.read_excel(path, sheet_name=sheet)
     cm = ColumnMap(df, _IRINS_SPEC, _IRINS_REQUIRED, source="IRINS master")
+    present = [k for k in _IRINS_COLUMNS if k in cm.actual]
+
+    no_expert, bad_campus, dup_expert, bad_sid, dup_sid = [], [], [], [], []
 
     with engine.begin() as conn:
-        camp, dept = {}, {}
-        rows = []
-        for _, r in df.iterrows():
+        dept = {}
+        known_depts = {r[0] for r in conn.execute(text("SELECT name FROM department"))}
+        camp_ids = {r[1]: r[0] for r in conn.execute(text("SELECT id, name FROM campus"))}
+        rows, seen_expert, claimed = [], set(), {}
+        for i, r in df.iterrows():
+            line = i + 2                     # spreadsheet row number, header is row 1
+            name = clean_str(cm.get(r, "name"), 255) or "Unknown"
+            expert_id = to_int(cm.get(r, "expert_id"))
+            if expert_id is None:
+                no_expert.append(f"row {line}: {name}")
+                continue
+            if expert_id in seen_expert:
+                dup_expert.append(f"row {line}: {name} (Expert_ID {expert_id})")
+                continue
+            seen_expert.add(expert_id)
+
+            # campus spelled any way IRINS writes it ("BITS Pilani, Hyderabad
+            # Campus", "K K Birla Goa") resolves to one of the four campuses; an
+            # unrecognised one is refused instead of becoming a fifth campus
+            raw_campus = clean_str(cm.get(r, "campus"))
+            campus = campus_from_affiliation(raw_campus)
+            if campus is None:
+                bad_campus.append(f"row {line}: {name} (campus '{raw_campus or ''}')")
+                continue
+            if campus not in camp_ids:
+                camp_ids[campus] = _lookup_id(conn, "campus", campus, {})
+
+            ids, rejected = split_scopus_ids(cm.get(r, "scopus_id"))
+            if rejected:
+                bad_sid.append(f"row {line}: {name} ('{', '.join(rejected)}')")
+            # an ID may belong to one professor only -- the first row keeps it
+            for sid in [x for x in ids if x in claimed]:
+                dup_sid.append(f"{sid}: {claimed[sid]} and {name} (kept for {claimed[sid]})")
+                ids.remove(sid)
+            for sid in ids:
+                claimed[sid] = name
+
             rows.append(
                 {
-                    "expert_id": to_int(cm.get(r, "expert_id")),
-                    "sid": clean_str(cm.get(r, "scopus_id"), 32),
-                    "name": clean_str(cm.get(r, "name"), 255) or "Unknown",
+                    "expert_id": expert_id,
+                    "sid": ids[0] if ids else None,
+                    "extra_sids": ids[1:],
+                    "name": name,
                     "title": clean_str(cm.get(r, "title"), 32),
                     "desig": clean_str(cm.get(r, "designation"), 96),
                     "email": clean_str(cm.get(r, "email"), 255),
-                    "campus_id": _lookup_id(conn, "campus", cm.get(r, "campus"), camp),
+                    "campus_id": camp_ids[campus],
                     "dept_id": _lookup_id(conn, "department", cm.get(r, "department"), dept),
                     "orcid": clean_str(cm.get(r, "orcid"), 64),
                     "rid": clean_str(cm.get(r, "researcher_id"), 64),
@@ -201,55 +274,114 @@ def load_irins(path, sheet=0):
                     "active": 0 if clean_str(cm.get(r, "status")) == "I" else 1,
                 }
             )
-        # a Scopus ID must not land on two faculty rows -- keep the first
-        seen, dupes = set(), 0
-        for row in rows:
-            if row["sid"] and row["sid"] in seen:
-                row["sid"] = None
-                dupes += 1
-            elif row["sid"]:
-                seen.add(row["sid"])
+        new_depts = sorted(n for n in dept if clean_str(n) not in known_depts)
 
-        # A Scopus ID reassigned to a different person would collide with the
-        # UNIQUE key mid-upsert, so release every incoming ID from its current
-        # owner first; the insert below then re-assigns them correctly.
-        ids = list(seen)
-        for i in range(0, len(ids), 1000):
-            chunk = ids[i : i + 1000]
-            binds = {f"i{k}": v for k, v in enumerate(chunk)}
-            conn.execute(
+        # Who holds each incoming ID today -- as a first ID, an extra ID, or a
+        # manual match from the review queue. An ID moving to a different
+        # professor is applied (IRINS is the authority) but reported, because a
+        # typo in a new joiner's row otherwise silently takes over someone
+        # else's publications.
+        incoming = {sid: row for row in rows for sid in ([row["sid"]] if row["sid"] else []) + row["extra_sids"]}
+        holders = {}
+        for sid_chunk in _chunks(list(incoming), 1000):
+            binds = {f"i{k}": v for k, v in enumerate(sid_chunk)}
+            inlist = ", ".join(":" + k for k in binds)
+            for sid, eid, fname, kind in conn.execute(
                 text(
-                    "UPDATE faculty SET scopus_author_id = NULL "
-                    f"WHERE scopus_author_id IN ({', '.join(':' + k for k in binds)})"
+                    f"""SELECT f.scopus_author_id, f.expert_id, f.name, 'irins' FROM faculty f
+                         WHERE f.scopus_author_id IN ({inlist})
+                        UNION ALL
+                        SELECT x.scopus_author_id, f.expert_id, f.name, 'irins' FROM faculty_scopus_id x
+                          JOIN faculty f ON f.id = x.faculty_id WHERE x.scopus_author_id IN ({inlist})
+                        UNION ALL
+                        SELECT a.scopus_author_id, f.expert_id, f.name, 'review' FROM author_alias a
+                          JOIN faculty f ON f.id = a.faculty_id WHERE a.scopus_author_id IN ({inlist})"""
                 ),
+                binds,
+            ):
+                holders.setdefault(sid, []).append((eid, fname, kind))
+        moved, stale_alias = [], []
+        for sid, row in incoming.items():
+            for eid, fname, kind in holders.get(sid, []):
+                if eid == row["expert_id"]:
+                    continue
+                moved.append(f"{sid}: {fname} -> {row['name']}"
+                             + (" (was a review-queue match)" if kind == "review" else ""))
+                if kind == "review":
+                    stale_alias.append(sid)
+
+        # release every incoming ID from wherever it sits now, so the UNIQUE key
+        # cannot collide mid-upsert; the writes below re-assign them correctly
+        for sid_chunk in _chunks(list(incoming), 1000):
+            binds = {f"i{k}": v for k, v in enumerate(sid_chunk)}
+            inlist = ", ".join(":" + k for k in binds)
+            conn.execute(text(f"UPDATE faculty SET scopus_author_id = NULL WHERE scopus_author_id IN ({inlist})"), binds)
+            conn.execute(text(f"DELETE FROM faculty_scopus_id WHERE scopus_author_id IN ({inlist})"), binds)
+        for sid_chunk in _chunks(stale_alias, 1000):
+            binds = {f"i{k}": v for k, v in enumerate(sid_chunk)}
+            conn.execute(
+                text(f"DELETE FROM author_alias WHERE scopus_author_id IN ({', '.join(':' + k for k in binds)})"),
                 binds,
             )
 
+        existing = {r[0] for r in conn.execute(text("SELECT expert_id FROM faculty WHERE expert_id IS NOT NULL"))}
+        cols = ["expert_id"] + [_IRINS_COLUMNS[k][0] for k in present]
+        vals = [":expert_id"] + [":" + _IRINS_COLUMNS[k][1] for k in present]
+        updates = ", ".join(f"{c} = VALUES({c})" for c in cols[1:])
         _exec(
             conn,
-            """INSERT INTO faculty
-                 (expert_id, scopus_author_id, name, title, designation, email,
-                  campus_id, department_id, orcid_id, researcher_id,
-                  google_scholar_id, expertise, qualification, is_active)
-               VALUES (:expert_id, :sid, :name, :title, :desig, :email,
-                       :campus_id, :dept_id, :orcid, :rid, :gs, :exp, :qual, :active)
-               ON DUPLICATE KEY UPDATE
-                 scopus_author_id = VALUES(scopus_author_id), name = VALUES(name),
-                 title = VALUES(title), designation = VALUES(designation),
-                 email = VALUES(email), campus_id = VALUES(campus_id),
-                 department_id = VALUES(department_id), orcid_id = VALUES(orcid_id),
-                 researcher_id = VALUES(researcher_id),
-                 google_scholar_id = VALUES(google_scholar_id),
-                 expertise = VALUES(expertise), qualification = VALUES(qualification),
-                 is_active = VALUES(is_active)""",
+            f"""INSERT INTO faculty ({", ".join(cols)})
+                VALUES ({", ".join(vals)})
+                ON DUPLICATE KEY UPDATE {updates}""",
             rows,
         )
 
-    out = {"faculty_rows": len(rows), "with_scopus_id": len(seen)}
-    if dupes:
-        out["duplicate_scopus_ids_dropped"] = dupes
+        # extra IDs: the sheet's list replaces whatever this professor had
+        ids_by_expert = {
+            r[0]: r[1]
+            for r in conn.execute(text("SELECT expert_id, id FROM faculty WHERE expert_id IS NOT NULL"))
+        }
+        loaded = [ids_by_expert[row["expert_id"]] for row in rows]
+        for fac_chunk in _chunks(loaded, 1000):
+            binds = {f"i{k}": v for k, v in enumerate(fac_chunk)}
+            conn.execute(
+                text(f"DELETE FROM faculty_scopus_id WHERE faculty_id IN ({', '.join(':' + k for k in binds)})"),
+                binds,
+            )
+        extras = [
+            {"s": sid, "f": ids_by_expert[row["expert_id"]]}
+            for row in rows for sid in row["extra_sids"]
+        ]
+        if extras:
+            _exec(conn, "INSERT INTO faculty_scopus_id (scopus_author_id, faculty_id) VALUES (:s, :f)", extras)
+
+    out = {
+        "faculty_rows": len(rows),
+        "added": sum(1 for row in rows if row["expert_id"] not in existing),
+        "updated": sum(1 for row in rows if row["expert_id"] in existing),
+        "with_scopus_id": sum(1 for row in rows if row["sid"]),
+    }
+    if extras:
+        out["extra_scopus_ids"] = len(extras)
+    warnings = {
+        "skipped_no_expert_id": no_expert,
+        "skipped_unknown_campus": bad_campus,
+        "skipped_duplicate_expert_id": dup_expert,
+        "unreadable_scopus_ids": bad_sid,
+        "duplicate_scopus_ids": dup_sid,
+        "scopus_ids_moved": moved,
+        "new_departments": new_depts,
+    }
+    for key, items in warnings.items():
+        if items:
+            out[key] = _capped(items)
     out.update(cm.report())
     return out
+
+
+def _chunks(items, n):
+    for i in range(0, len(items), n):
+        yield items[i : i + n]
 
 
 # ------------------------------------------------------------------- SJR
