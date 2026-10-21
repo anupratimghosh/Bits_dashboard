@@ -8,6 +8,7 @@ import { useApi, useFilters } from '../useData'
 
 const COLUMNS = [
   { key: 'name', label: 'Faculty' },
+  { key: 'scopus_author_id', label: 'Scopus', sortable: false },
   { key: 'campus', label: 'Campus' },
   { key: 'department', label: 'Department' },
   { key: 'publications', label: 'Pubs', num: true },
@@ -127,7 +128,7 @@ export default function FacultyList() {
             <thead>
               <tr>
                 {COLUMNS.map((c) => (
-                  <Th key={c.key} field={c.key} sort={sort} order={order} onSort={onSort} num={c.num}>
+                  <Th key={c.key} field={c.sortable === false ? null : c.key} sort={sort} order={order} onSort={onSort} num={c.num}>
                     {c.label}
                   </Th>
                 ))}
@@ -139,6 +140,17 @@ export default function FacultyList() {
                   <td>
                     <Link to={`/faculty/${f.id}`} className="t-title">{f.name}</Link>
                     {f.designation && <div className="t-sub">{f.designation}</div>}
+                  </td>
+                  <td>
+                    {f.scopus_author_id ? (
+                      <a
+                        href={`https://www.scopus.com/authid/detail.uri?authorId=${f.scopus_author_id}`}
+                        target="_blank" rel="noreferrer" style={{ color: 'var(--series-1)' }}
+                        title="Open Scopus author profile"
+                      >
+                        {f.scopus_author_id}
+                      </a>
+                    ) : <span className="muted">--</span>}
                   </td>
                   <td>{f.campus || <span className="muted">--</span>}</td>
                   <td>{f.department || <span className="muted">--</span>}</td>
