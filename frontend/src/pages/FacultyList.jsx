@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { Card, DownloadButton, ErrorBox, Pager, Spinner, Th } from '../components/UI'
 import { fetchAll } from '../download'
-import { dec, num } from '../format'
+import { num } from '../format'
 import { useApi, useFilters } from '../useData'
 
 const COLUMNS = [
@@ -15,8 +15,6 @@ const COLUMNS = [
   { key: 'citations', label: 'Citations', num: true },
   { key: 'h_index', label: 'h-index', num: true },
   { key: 'q1', label: 'Q1', num: true },
-  { key: 'avg_citescore', label: 'Avg CiteScore', num: true, digits: 2 },
-  { key: 'avg_impact_factor', label: 'Avg JIF', num: true, digits: 3 },
 ]
 
 const CSV_COLUMNS = [
@@ -158,8 +156,6 @@ export default function FacultyList() {
                   <td className="num">{num(f.citations)}</td>
                   <td className="num">{num(f.h_index)}</td>
                   <td className="num">{num(f.q1)}</td>
-                  <td className="num">{f.avg_citescore === null ? <span className="muted">--</span> : dec(f.avg_citescore)}</td>
-                  <td className="num">{f.avg_impact_factor === null ? <span className="muted">--</span> : dec(f.avg_impact_factor, 3)}</td>
                 </tr>
               ))}
             </tbody>
