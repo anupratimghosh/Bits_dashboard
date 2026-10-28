@@ -1,9 +1,21 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { Donut, QuartileStack, RankedBars, TimeBars, Trend } from '../components/Charts'
-import { BarCell, Card, ErrorBox, Spinner, Stat } from '../components/UI'
+import { BarCell, Card, ErrorBox, Quartile, Spinner, Stat } from '../components/UI'
 import { dec, growthLabel, num } from '../format'
-import { useApiAll, useFilters } from '../useData'
+import { useApi, useApiAll, useFilters } from '../useData'
+
+// "Top" can mean where BITS publishes most, or the journals with the highest
+// standing; metric rankings skip journals that have no value for that metric.
+const JOURNAL_SORTS = [
+  { value: 'sjr', label: 'SJR', note: 'ranked by SCImago Journal Rank' },
+  { value: 'citescore', label: 'CiteScore', note: 'ranked by Scopus CiteScore' },
+  { value: 'impact_factor', label: 'JIF', note: 'ranked by WoS Journal Impact Factor' },
+  { value: 'snip', label: 'SNIP', note: 'ranked by source-normalised impact per paper' },
+  { value: 'publications', label: 'Publications', note: 'ranked by BITS publication count' },
+  { value: 'citations', label: 'Citations', note: 'ranked by citations to BITS papers' },
+]
 
 export default function Overview() {
   const { filters, setFilter } = useFilters()
@@ -13,13 +25,17 @@ export default function Overview() {
     byCampus: '/analytics/by-campus',
     byType: '/analytics/by-document-type',
     subjects: '/analytics/top-subjects',
-    journals: '/analytics/top-journals',
     trend: '/analytics/citation-trend',
   }, { ...filters, limit: 10 })
 
+  const [journalSort, setJournalSort] = useState('sjr')
+  const journals = useApi('/analytics/top-journals', { ...filters, limit: 10, sort: journalSort })
+  const journalRows = journals.data || []
+  const sortInfo = JOURNAL_SORTS.find((o) => o.value === journalSort)
+
   const k = data.kpi
   const growth = k ? growthLabel(k.yoy_growth_pct) : null
-  const journalsMax = Math.max(1, ...(data.journals || []).map((j) => j.publications || 0))
+  const journalsMax = Math.max(1, ...journalRows.map((j) => j.publications || 0))
 
   return (
     <div>
@@ -61,8 +77,8 @@ export default function Overview() {
               meta={`${dec((k.q1_publications / k.total_publications) * 100, 1)}% of output`} />
             <Stat label="Q2 journal publications" value={num(k.q2_publications)}
               meta={`${dec((k.q2_publications / k.total_publications) * 100, 1)}% of output`} />
-            <Stat label="With impact factor" value={num(k.publications_with_if)}
-              meta={`avg JIF ${dec(k.avg_impact_factor)}`} />
+            <Stat label="Average JIF" value={dec(k.avg_impact_factor)}
+              meta="WoS Journal Impact Factor" />
             <Stat label="Journals published in" value={num(k.total_journals)}
               meta={`avg CiteScore ${dec(k.avg_citescore)} · avg SJR ${dec(k.avg_sjr, 3)}`} />
           </div>
@@ -99,26 +115,44 @@ export default function Overview() {
             <Card title="Top subject areas" note="from the CiteScore ASJC taxonomy">
               <RankedBars data={data.subjects} labelKey="subject" valueKey="publications" name="Publications" />
             </Card>
-            <Card title="Top journals" note="by publication count">
+            <Card
+              title="Top journals" note={sortInfo.note}
+              action={
+                <select
+                  aria-label="Rank top journals by" value={journalSort}
+                  onChange={(e) => setJournalSort(e.target.value)}
+                >
+                  {JOURNAL_SORTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              }
+            >
+              <ErrorBox error={journals.error} />
               <div className="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>Journal</th>
                       <th className="num">Pubs</th>
+                      <th>Q</th>
+                      <th className="num">{journalSort === 'snip' ? 'SNIP' : 'SJR'}</th>
                       <th className="num">CiteScore</th>
                       <th className="num">JIF</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(data.journals || []).map((j) => (
+                    {journalRows.map((j) => (
                       <tr key={`${j.journal_id}-${j.journal}`}>
                         <td className="t-wide">{j.journal}</td>
                         <td className="num"><BarCell value={j.publications} max={journalsMax} /></td>
+                        <td><Quartile value={j.quartile} /></td>
+                        <td className="num">{journalSort === 'snip' ? dec(j.snip, 2) : dec(j.sjr, 2)}</td>
                         <td className="num">{dec(j.citescore, 1)}</td>
                         <td className="num">{dec(j.impact_factor, 1)}</td>
                       </tr>
                     ))}
+                    {!journals.loading && journalRows.length === 0 && (
+                      <tr><td colSpan={6} className="note">No journals with a {sortInfo.label} for this selection.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -327,16 +327,37 @@ def by_department(f: PubFilters = Depends(filter_params)):
 
 # ------------------------------------------------------------------- top lists
 
+# Journal rankings: by how much BITS publishes there, or by the journal's own
+# standing (SJR, CiteScore, WoS JIF, SNIP). A metric ranking leaves out journals
+# that have no value for that metric rather than listing them last.
+JOURNAL_SORTS = {
+    "publications": ("publications", None),
+    "citations": ("citations", None),
+    "sjr": ("sjr", "sjr"),
+    "citescore": ("citescore", "citescore"),
+    "impact_factor": ("impact_factor", "impact_factor"),
+    "snip": ("snip", "snip"),
+}
+
+
 @router.get("/analytics/top-journals")
-def top_journals(f: PubFilters = Depends(filter_params), limit: int = Query(15)):
+def top_journals(
+    f: PubFilters = Depends(filter_params),
+    limit: int = Query(15),
+    sort: str = Query("publications"),
+):
+    key, required = JOURNAL_SORTS.get(sort, JOURNAL_SORTS["publications"])
+    tiebreak = "publications DESC, citations DESC" if key != "publications" else "citations DESC"
     return _scoped(
         f,
         """p.journal_id, COALESCE(j.title, p.source_title) AS journal,
            COUNT(*) AS publications, COALESCE(SUM(p.cited_by), 0) AS citations,
            MAX(jm.sjr_quartile) AS quartile, MAX(jm.citescore) AS citescore,
-           MAX(jm.sjr) AS sjr, MAX(jm.impact_factor) AS impact_factor""",
-        group="GROUP BY p.journal_id, journal",
-        order="ORDER BY publications DESC, citations DESC",
+           MAX(jm.sjr) AS sjr, MAX(jm.impact_factor) AS impact_factor,
+           MAX(jm.snip) AS snip""",
+        group="GROUP BY p.journal_id, journal"
+        + (f" HAVING {required} IS NOT NULL" if required else ""),
+        order=f"ORDER BY {key} DESC, {tiebreak}",
         limit=limit,
     )
 
