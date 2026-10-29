@@ -17,8 +17,7 @@ const COLUMNS = [
   { key: 'q2', label: 'Q2', num: true },
   { key: 'q3', label: 'Q3', num: true },
   { key: 'q4', label: 'Q4', num: true },
-  { key: 'with_if', label: 'With JIF', num: true },
-  { key: 'avg_sjr', label: 'Avg SJR', num: true, digits: 3 },
+  { key: 'no_quartile', label: 'No quartile', num: true },
   { key: 'avg_citescore', label: 'Avg CiteScore', num: true, digits: 2 },
   { key: 'avg_impact_factor', label: 'Avg JIF', num: true, digits: 3 },
 ]
@@ -124,7 +123,11 @@ export default function Departments() {
 
   const deptMax = Math.max(1, ...(data.depts || []).map((d2) => d2.publications || 0))
 
-  const rows = [...(data.depts || [])].sort((a, b) => {
+  // publications in journals with no SJR quartile (conferences, books, unranked titles)
+  const rows = (data.depts || []).map((r) => ({
+    ...r,
+    no_quartile: Math.max(0, (r.publications || 0) - (r.q1 || 0) - (r.q2 || 0) - (r.q3 || 0) - (r.q4 || 0)),
+  })).sort((a, b) => {
     const av = a[sort], bv = b[sort]
     if (av === bv) return 0
     if (av === null || av === undefined) return 1
@@ -160,9 +163,9 @@ export default function Departments() {
             <Stat label="Publications" value={num(d.summary.publications)} meta={d.department.name} />
             <Stat label="Citations" value={num(d.summary.citations)} meta={`${num(d.summary.journals)} journals`} />
             <Stat label="Q1 publications" value={num(d.summary.q1)}
-              meta={`${num(d.summary.with_if)} with impact factor`} />
+              meta={`${dec((d.summary.q1 / (d.summary.publications || 1)) * 100, 1)}% of output`} />
             <Stat label="Average CiteScore" value={dec(d.summary.avg_citescore)}
-              meta={`avg SJR ${dec(d.summary.avg_sjr, 3)} · avg JIF ${dec(d.summary.avg_impact_factor)}`} />
+              meta={`avg JIF ${dec(d.summary.avg_impact_factor)}`} />
           </div>
 
           <div className="grid cols-2">

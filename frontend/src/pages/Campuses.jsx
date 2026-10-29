@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import FilterBar from '../components/FilterBar'
 import { QuartileBar, RankedBars } from '../components/Charts'
-import { Card, DownloadButton, ErrorBox, Spinner } from '../components/UI'
+import { Card, DownloadButton, ErrorBox, Spinner, Stat } from '../components/UI'
 import { dec, num } from '../format'
 import { useApiAll, useFilters } from '../useData'
 
@@ -19,11 +19,17 @@ const MEASURES = [
 export default function Campuses() {
   const { filters, setFilter } = useFilters()
   const { data, error, loading } = useApiAll({
+    kpi: '/overview',
     campuses: '/analytics/by-campus',
     years: '/analytics/by-year',
   }, filters)
 
   const campuses = data.campuses || []
+  const k = data.kpi
+  // campus figures double-count cross-campus papers; the gap to the institute
+  // total is how many extra credits collaborations add
+  const sumOf = (key) => campuses.reduce((t, c) => t + (c[key] || 0), 0)
+  const extra = (key, total) => Math.max(0, sumOf(key) - (total || 0))
 
   return (
     <div>
@@ -42,6 +48,27 @@ export default function Campuses() {
 
       {campuses.length > 0 && (
         <div className="stack">
+          {k && (
+            <div className="grid cols-5">
+              <Stat
+                label="Total publications" value={num(k.total_publications)}
+                meta={extra('publications', k.total_publications) > 0
+                  ? `campus credits sum to ${num(sumOf('publications'))} · ${num(extra('publications', k.total_publications))} from cross-campus papers`
+                  : 'no cross-campus double counting'}
+              />
+              <Stat
+                label="Q1 journal publications" value={num(k.q1_publications)}
+                meta={`${dec((k.q1_publications / (k.total_publications || 1)) * 100, 1)}% of output`}
+              />
+              <Stat label="Institution h-index" value={num(k.h_index)} meta={`i10 ${num(k.i10_index)}`} />
+              <Stat label="Total citations" value={num(k.total_citations)} meta={`${dec(k.avg_citations)} per publication`} />
+              <Stat
+                label="Faculty publishing" value={num(k.total_faculty_publishing)}
+                meta={`across ${campuses.length} campuses`}
+              />
+            </div>
+          )}
+
           <div className="grid cols-3">
             <Card title="Publications by campus">
               <RankedBars data={campuses} labelKey="name" valueKey="publications" name="Publications" />
